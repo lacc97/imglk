@@ -1,47 +1,106 @@
 const std = @import("std");
 
-// Although this function looks imperative, note that its job is to
-// declaratively construct a build graph that will be executed by an external
-// runner.
-pub fn build(b: *std.Build) void {
-    // Standard target options allows the person running `zig build` to choose
-    // what target to build for. Here we do not override the defaults, which
-    // means any target is allowed, and the default is native. Other options
-    // for restricting supported target set are available.
-    const target = b.standardTargetOptions(.{});
+const BuildParams = struct {
+    target: std.zig.CrossTarget,
+    optimize: std.builtin.Mode,
 
-    // Standard optimization options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
-    // set a preferred release mode, allowing the user to decide how to optimize.
-    const optimize = b.standardOptimizeOption(.{});
+    test_step: *std.Build.Step,
+};
+
+pub fn build(
+    b: *std.Build,
+) !void {
+    const params: BuildParams = .{
+        .target = b.standardTargetOptions(.{}),
+        .optimize = b.standardOptimizeOption(.{}),
+        .test_step = b.step("test", "Run tests"),
+    };
+
+    const cimgui_lib = build_cimgui(b, params);
+    const cimgui_module = b.addModule("cimgui", .{
+        .source_file = std.Build.FileSource.relative("lib/cimgui.zig"),
+    });
 
     const lib = b.addStaticLibrary(.{
         .name = "imglk",
-        // In this case the main source file is merely a path, however, in more
-        // complicated build scripts, this could be a generated file.
         .root_source_file = .{ .path = "src/main.zig" },
-        .target = target,
-        .optimize = optimize,
+        .target = params.target,
+        .optimize = params.optimize,
     });
-
-    // This declares intent for the library to be installed into the standard
-    // location when the user invokes the "install" step (the default step when
-    // running `zig build`).
+    lib.emit_asm = .emit;
+    lib.addIncludePath("lib/cimgui");
+    lib.addIncludePath("lib/cimgui/generator/output");
+    lib.linkLibrary(cimgui_lib);
+    lib.addModule("cimgui", cimgui_module);
+    linkGlfw(b, lib);
     b.installArtifact(lib);
 
-    // Creates a step for unit testing. This only builds the test executable
-    // but does not run it.
     const main_tests = b.addTest(.{
         .root_source_file = .{ .path = "src/main.zig" },
-        .target = target,
-        .optimize = optimize,
+        .target = params.target,
+        .optimize = params.optimize,
     });
-
     const run_main_tests = b.addRunArtifact(main_tests);
+    params.test_step.dependOn(&run_main_tests.step);
+}
 
-    // This creates a build step. It will be visible in the `zig build --help` menu,
-    // and can be selected like this: `zig build test`
-    // This will evaluate the `test` step rather than the default, which is "install".
-    const test_step = b.step("test", "Run library tests");
-    test_step.dependOn(&run_main_tests.step);
+fn build_cimgui(
+    b: *std.Build,
+    params: BuildParams,
+) *std.Build.Step.Compile {
+    const libpath = "lib/cimgui/";
+
+    const lib = b.addStaticLibrary(.{
+        .name = "cimgui",
+        .root_source_file = .{ .path = "lib/cimgui.zig" },
+        .target = params.target,
+        .optimize = params.optimize,
+    });
+    lib.defineCMacro("IMGUI_DISABLE_OBSOLETE_FUNCTIONS", "1");
+    lib.addIncludePath(libpath);
+    lib.addIncludePath(libpath ++ "imgui/");
+    lib.addIncludePath(libpath ++ "generator/output/");
+    @import("glfw").addPaths(lib);
+    lib.defineCMacro("GLFW_INCLUDE_NONE", null);
+    lib.addCSourceFiles(&.{
+        libpath ++ "cimgui.cpp",
+        libpath ++ "imgui/imgui.cpp",
+        libpath ++ "imgui/imgui_draw.cpp",
+        libpath ++ "imgui/imgui_demo.cpp",
+        libpath ++ "imgui/imgui_widgets.cpp",
+
+        libpath ++ "imgui/backends/imgui_impl_glfw.cpp",
+        libpath ++ "imgui/backends/imgui_impl_opengl3.cpp",
+    }, &.{});
+    lib.linkLibCpp();
+
+    return lib;
+}
+
+// --- 3rd party linking ---
+fn linkGlfw(
+    b: *std.Build,
+    step: *std.build.CompileStep,
+) void {
+    const glfw_dep = b.dependency("mach_glfw", .{
+        .target = step.target,
+        .optimize = step.optimize,
+    });
+    step.linkLibrary(glfw_dep.artifact("mach-glfw"));
+    step.addModule("glfw", glfw_dep.module("mach-glfw"));
+
+    // TODO: until zig package manager properly supports transitive dependencies
+    @import("glfw").addPaths(step);
+    step.linkLibrary(b.dependency("vulkan_headers", .{
+        .target = step.target,
+        .optimize = step.optimize,
+    }).artifact("vulkan-headers"));
+    step.linkLibrary(b.dependency("x11_headers", .{
+        .target = step.target,
+        .optimize = step.optimize,
+    }).artifact("x11-headers"));
+    step.linkLibrary(b.dependency("wayland_headers", .{
+        .target = step.target,
+        .optimize = step.optimize,
+    }).artifact("wayland-headers"));
 }
