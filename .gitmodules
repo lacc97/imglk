@@ -1,3 +1,6 @@
 [submodule "lib/cimgui"]
 	path = lib/cimgui
 	url = https://github.com/cimgui/cimgui.git
+[submodule "lib/zgl"]
+	path = lib/zgl
+	url = https://github.com/ziglibs/zgl.git

@@ -78,6 +78,13 @@ pub const glfw = struct {
             return Error.dear_imgui;
         }
     }
+    pub fn deinit() void {
+        c.ImGui_ImplGlfw_Shutdown();
+    }
+
+    pub fn newFrame() void {
+        c.ImGui_ImplGlfw_NewFrame();
+    }
 };
 
 const GLSLVersion = enum {
@@ -125,6 +132,17 @@ pub const opengl3 = struct {
             return Error.dear_imgui;
         }
     }
+    pub fn deinit() void {
+        c.ImGui_ImplOpenGL3_Shutdown();
+    }
+
+    pub fn newFrame() void {
+        c.ImGui_ImplOpenGL3_NewFrame();
+    }
+
+    pub fn renderDrawData(draw_data: *c.ImDrawData) void {
+        c.ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+    }
 };
 
 // --- Public functions ---
@@ -144,7 +162,25 @@ pub fn setCurrentContext(ctx_opt: ?Context) void {
     }
 }
 
-/// Must have a current context set.
+// -- Functions that require a valid current context.
+
 pub fn getIO() IO {
     return getCurrentContext().?.getIO();
+}
+
+pub fn newFrame() void {
+    c.igNewFrame();
+}
+
+pub fn render() void {
+    c.igRender();
+}
+
+// TODO: zig wrapper
+pub fn getDrawData() *c.ImDrawData {
+    return c.igGetDrawData();
+}
+
+pub fn showDemoWindow(p_open: ?*bool) void {
+    c.igShowDemoWindow(p_open);
 }

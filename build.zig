@@ -21,6 +21,10 @@ pub fn build(
         .source_file = std.Build.FileSource.relative("lib/cimgui.zig"),
     });
 
+    const zgl_module = b.addModule("zgl", .{
+        .source_file = std.Build.FileSource.relative("lib/zgl/zgl.zig"),
+    });
+
     const lib = b.addStaticLibrary(.{
         .name = "imglk",
         .root_source_file = .{ .path = "src/main.zig" },
@@ -33,6 +37,7 @@ pub fn build(
     lib.linkLibrary(cimgui_lib);
     lib.addModule("cimgui", cimgui_module);
     linkGlfw(b, lib);
+    lib.addModule("gl", zgl_module);
     b.installArtifact(lib);
 
     const main_tests = b.addTest(.{
@@ -52,11 +57,11 @@ fn build_cimgui(
 
     const lib = b.addStaticLibrary(.{
         .name = "cimgui",
-        .root_source_file = .{ .path = "lib/cimgui.zig" },
         .target = params.target,
         .optimize = params.optimize,
     });
     lib.defineCMacro("IMGUI_DISABLE_OBSOLETE_FUNCTIONS", "1");
+    lib.defineCMacro("IMGUI_IMPL_API", "extern \"C\"");
     lib.addIncludePath(libpath);
     lib.addIncludePath(libpath ++ "imgui/");
     lib.addIncludePath(libpath ++ "generator/output/");
@@ -68,6 +73,7 @@ fn build_cimgui(
         libpath ++ "imgui/imgui_draw.cpp",
         libpath ++ "imgui/imgui_demo.cpp",
         libpath ++ "imgui/imgui_widgets.cpp",
+        libpath ++ "imgui/imgui_tables.cpp",
 
         libpath ++ "imgui/backends/imgui_impl_glfw.cpp",
         libpath ++ "imgui/backends/imgui_impl_opengl3.cpp",
