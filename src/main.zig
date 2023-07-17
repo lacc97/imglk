@@ -17,7 +17,7 @@ fn runGlk() !void {
 
     var window = glfw.Window.create(640, 480, "imglk", null, null, .{
         .context_version_major = 3,
-        .context_version_minor = 2,
+        .context_version_minor = 3,
         .opengl_profile = .opengl_core_profile,
         .opengl_forward_compat = true,
         .context_debug = true,
@@ -47,7 +47,7 @@ fn runGlk() !void {
 
     try imgui.glfw.initForOpenGL(window.handle, true);
     defer imgui.glfw.deinit();
-    try imgui.opengl3.init(.@"1.50");
+    try imgui.opengl3.init(.@"3.30");
     defer imgui.opengl3.deinit();
 
     var show_demo_window = true;
@@ -59,6 +59,14 @@ fn runGlk() !void {
         imgui.newFrame();
 
         if (show_demo_window) imgui.showDemoWindow(&show_demo_window);
+
+        {
+            _ = imgui.begin("Hello, world!", null, .{});
+            defer imgui.end();
+
+            imgui.text("This is some text.");
+            _ = imgui.checkbox("Show demo window", &show_demo_window);
+        }
 
         imgui.render();
 

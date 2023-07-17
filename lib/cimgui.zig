@@ -18,6 +18,40 @@ pub const Error = error{
     WrongGLSLVersion,
 };
 
+pub const WindowFlags = packed struct(u32) {
+    no_title_bar: bool = false,
+    no_resize: bool = false,
+    no_move: bool = false,
+    no_scrollbar: bool = false,
+    no_scroll_with_mouse: bool = false,
+    no_collapse: bool = false,
+    always_auto_resize: bool = false,
+    no_background: bool = false,
+    no_saved_settings: bool = false,
+    no_mouse_inputs: bool = false,
+    menu_bar: bool = false,
+    horizontal_scrollbar: bool = false,
+    no_focus_on_appearing: bool = false,
+    no_bring_to_front_on_focus: bool = false,
+    always_vertical_scrollbar: bool = false,
+    always_horizontal_scrollbar: bool = false,
+    always_use_window_padding: bool = false,
+    no_nav_inputs: bool = false,
+    no_nav_focus: bool = false,
+    unsaved_document: bool = false,
+    no_docking: bool = false,
+    nav_flattened: bool = false,
+    child_window: bool = false,
+    tooltip: bool = false,
+    popup: bool = false,
+    modal: bool = false,
+    child_menu: bool = false,
+    dock_node_host: bool = false,
+
+    // padding
+    _: u4 = 0,
+};
+
 pub const Context = struct {
     // --- Fields ---
 
@@ -183,4 +217,21 @@ pub fn getDrawData() *c.ImDrawData {
 
 pub fn showDemoWindow(p_open: ?*bool) void {
     c.igShowDemoWindow(p_open);
+}
+
+// -- Drawing functions
+
+pub fn begin(name: [:0]const u8, p_open: ?*bool, flags: WindowFlags) bool {
+    return c.igBegin(name.ptr, p_open, @bitCast(flags));
+}
+pub fn end() void {
+    return c.igEnd();
+}
+
+pub fn text(txt: [:0]const u8) void {
+    c.igText(txt);
+}
+
+pub fn checkbox(txt: [:0]const u8, b: *bool) bool {
+    return c.igCheckbox(txt.ptr, b);
 }
