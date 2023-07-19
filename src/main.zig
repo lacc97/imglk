@@ -7,6 +7,12 @@ const imgui = @import("cimgui");
 
 const gl_log = std.log.scoped(.gl);
 
+const Stream = @import("Stream.zig");
+
+comptime {
+    std.testing.refAllDecls(Stream);
+}
+
 fn runGlk() !void {
     glfw.setErrorCallback(errorCallback);
     if (!glfw.init(.{})) {
