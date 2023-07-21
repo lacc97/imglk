@@ -45,6 +45,8 @@ pub const Error = error{
     NotAvailable,
 };
 
+// --- Private types ---
+
 // --- Public functions ---
 
 pub fn deinit(
@@ -108,16 +110,7 @@ pub fn putChars(
     if (!self.flags.write) return Error.NotAvailable;
 
     if (!self.flags.unicode) {
-        switch (self.data) {
-            .memory => |*m| {
-                _ = m.stream.write(buf) catch |err| {
-                    switch (err) {
-                        error.NoSpaceLeft => return Error.EOF,
-                        else => unreachable,
-                    }
-                };
-            },
-        }
+        return self.putCharsRaw(buf);
     } else {
         var buf_uni: [static_buffer_size_uni]u32 = undefined;
 
@@ -130,7 +123,7 @@ pub fn putChars(
             }) {
                 buf_uni[j] = buf[i];
             }
-            try self.putUniChars(buf_uni[0..j]);
+            try self.putUniCharsRaw(buf_uni[0..j]);
         }
     }
 }
@@ -164,16 +157,7 @@ pub fn putUniChars(
     if (!self.flags.write) return Error.NotAvailable;
 
     if (self.flags.unicode) {
-        switch (self.data) {
-            .memory => |*m| {
-                _ = m.stream.write(std.mem.sliceAsBytes(buf_uni)) catch |err| {
-                    switch (err) {
-                        error.NoSpaceLeft => return Error.EOF,
-                        else => unreachable,
-                    }
-                };
-            },
-        }
+        return self.putUniCharsRaw(buf_uni);
     } else {
         var buf: [static_buffer_size]u8 = undefined;
 
@@ -186,16 +170,48 @@ pub fn putUniChars(
             }) {
                 buf[j] = if (buf_uni[i] <= 0xff) @truncate(buf_uni[j]) else '?';
             }
-            try self.putChars(buf[0..j]);
+            try self.putCharsRaw(buf[0..j]);
         }
     }
 }
 
-// --- Private types ---
-
-// --- Public functions ---
-
 // --- Private functions ---
+
+fn putCharsRaw(
+    self: *@This(),
+    buf: []const u8,
+) Error!void {
+    std.debug.assert(!self.flags.unicode);
+
+    switch (self.data) {
+        .memory => |*m| {
+            _ = m.stream.write(buf) catch |err| {
+                switch (err) {
+                    error.NoSpaceLeft => return Error.EOF,
+                    else => unreachable,
+                }
+            };
+        },
+    }
+}
+
+fn putUniCharsRaw(
+    self: *@This(),
+    buf_uni: []const u32,
+) Error!void {
+    std.debug.assert(self.flags.unicode);
+
+    switch (self.data) {
+        .memory => |*m| {
+            _ = m.stream.write(std.mem.sliceAsBytes(buf_uni)) catch |err| {
+                switch (err) {
+                    error.NoSpaceLeft => return Error.EOF,
+                    else => unreachable,
+                }
+            };
+        },
+    }
+}
 
 // --- Exported ---
 
