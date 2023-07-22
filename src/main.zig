@@ -3,6 +3,7 @@ const testing = std.testing;
 
 const core = @import("core.zig");
 const StreamSubsystem = @import("StreamSubsystem.zig");
+const FileRefSubsystem = @import("FileRefSubsystem.zig");
 
 const glfw = @import("glfw");
 const gl = @import("gl");
@@ -11,11 +12,14 @@ const imgui = @import("cimgui");
 const gl_log = std.log.scoped(.gl);
 
 comptime {
-    // std.testing.refAllDecls(StreamSubsystem);
+    // std.testing.refAllDecls(FileRefSubsystem);
 }
 
 fn runGlk() !void {
-    try StreamSubsystem.initSubsystem();
+    try FileRefSubsystem.initSubsystem(std.heap.c_allocator);
+    errdefer FileRefSubsystem.deinitSubsystem();
+
+    try StreamSubsystem.initSubsystem(std.heap.c_allocator);
     errdefer StreamSubsystem.deinitSubsystem();
 
     glfw.setErrorCallback(errorCallback);

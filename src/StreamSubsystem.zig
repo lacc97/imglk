@@ -341,7 +341,7 @@ pub fn deinitSubsystem() void {
 
 fn init(
     alloc: std.mem.Allocator,
-) StreamSubsystem {
+) @This() {
     return .{ .pool = ObjectPool(Stream).init(alloc) };
 }
 fn deinit(
@@ -487,6 +487,28 @@ pub export fn glk_stream_open_memory_uni(
 //         for (0..(buf_len - 1)) |i| try std.testing.expectEqual(@as(u8, @truncate(i)), buf1[i]);
 //     }
 // }
+
+pub export fn glk_stream_open_file(
+    fr: @import("FileRefSubsystem.zig").frefid_t,
+    fmode: u32,
+    rock: u32,
+) strid_t {
+    _ = rock;
+    _ = fmode;
+    _ = fr;
+    return null;
+}
+
+pub export fn glk_stream_open_file_uni(
+    fr: @import("FileRefSubsystem.zig").frefid_t,
+    fmode: u32,
+    rock: u32,
+) strid_t {
+    _ = rock;
+    _ = fmode;
+    _ = fr;
+    return null;
+}
 
 pub export fn glk_stream_close(
     str: strid_t,
