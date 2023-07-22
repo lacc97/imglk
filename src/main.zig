@@ -7,10 +7,10 @@ const imgui = @import("cimgui");
 
 const gl_log = std.log.scoped(.gl);
 
-const Stream = @import("Stream.zig");
+const StreamSubsystem = @import("StreamSubsystem.zig");
 
 comptime {
-    std.testing.refAllDecls(Stream);
+    std.testing.refAllDecls(StreamSubsystem);
 }
 
 fn runGlk() !void {
