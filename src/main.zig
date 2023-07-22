@@ -56,6 +56,8 @@ fn runGlk() !void {
     try imgui.opengl3.init(.@"3.30");
     defer imgui.opengl3.deinit();
 
+    glk_main();
+
     var show_demo_window = true;
     while (!window.shouldClose()) {
         glfw.pollEvents();
@@ -92,6 +94,8 @@ fn runGlk() !void {
 }
 
 // --- Callbacks ---
+
+pub extern fn glk_main() void;
 
 /// Default GLFW error handling callback
 fn errorCallback(error_code: glfw.ErrorCode, description: [:0]const u8) void {

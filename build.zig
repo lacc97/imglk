@@ -48,6 +48,17 @@ pub fn build(
     });
     const run_main_tests = b.addRunArtifact(main_tests);
     params.test_step.dependOn(&run_main_tests.step);
+
+    const terp_model = b.addExecutable(.{
+        .name = "model-imglk",
+        .root_source_file = .{ .path = "terp/main.zig" },
+        .target = params.target,
+        .optimize = params.optimize,
+    });
+    terp_model.addIncludePath("src/c");
+    terp_model.addCSourceFile("terp/model.c", &.{});
+    terp_model.linkLibrary(lib);
+    b.installArtifact(terp_model);
 }
 
 fn build_cimgui(
@@ -85,6 +96,7 @@ fn build_cimgui(
 }
 
 // --- 3rd party linking ---
+
 fn linkGlfw(
     b: *std.Build,
     step: *std.build.CompileStep,
