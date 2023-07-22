@@ -1,4 +1,5 @@
 const std = @import("std");
+const core = @import("core.zig");
 
 const ObjectPool = @import("object_pool.zig").ObjectPool;
 
@@ -19,6 +20,12 @@ pool: ObjectPool(Stream),
 current: strid_t = null,
 
 // --- Public types ---
+
+pub const Error = error{
+    EOF,
+    NotAvailable,
+    InvalidArgument,
+};
 
 const Stream = struct {
     // --- Fields ---
@@ -42,11 +49,6 @@ const Stream = struct {
     },
 
     // --- Public types ---
-
-    pub const Error = error{
-        EOF,
-        NotAvailable,
-    };
 
     // --- Private types ---
 
@@ -248,6 +250,29 @@ fn getNextStream(
     return next_str;
 }
 
+fn openMemoryStream(self: *@This(), unicode: bool, buf: []u8, fmode: core.FileMode, rock: u32) !*Stream {
+    if (unicode and buf.len % 4 != 0) return Error.InvalidArgument;
+    if (fmode == .write_append) return Error.InvalidArgument;
+
+    const str = try self.pool.alloc();
+    errdefer self.pool.dealloc(str);
+
+    str.* = .{
+        .rock = rock,
+        .flags = .{
+            .unicode = unicode,
+            .read = fmode == .read or fmode == .read_write,
+            .write = fmode == .write or fmode == .read_write,
+        },
+        .data = .{
+            .memory = .{
+                .stream = std.io.fixedBufferStream(buf),
+            },
+        },
+    };
+
+    return str;
+}
 fn closeStream(self: *@This(), str: ?*Stream, resultptr: ?*stream_result_t) void {
     const s = str.?;
 
@@ -265,10 +290,7 @@ fn closeStream(self: *@This(), str: ?*Stream, resultptr: ?*stream_result_t) void
 
 pub const strid_t = ?*Stream;
 
-pub const stream_result_t = extern struct {
-    readcount: u32,
-    writecount: u32,
-};
+const stream_result_t = core.c_glk.stream_result_t;
 
 pub export fn glk_stream_get_rock(
     str: strid_t,
@@ -292,6 +314,69 @@ pub export fn glk_stream_set_current(
 ) callconv(.C) void {
     sys_stream.current = str;
 }
+
+pub export fn glk_stream_open_memory(
+    buf: ?[*]u8,
+    len: u32,
+    fmode: u32,
+    rock: u32,
+) strid_t {
+    return sys_stream.openMemoryStream(
+        false,
+        buf.?[0..len],
+        @enumFromInt(@as(u3, @intCast(fmode))),
+        rock,
+    ) catch |err| {
+        glk_log.warn("failed to open memory stream: {}", .{err});
+        return null;
+    };
+}
+
+pub export fn glk_stream_open_memory_uni(
+    buf: ?[*]u8,
+    len: u32,
+    fmode: u32,
+    rock: u32,
+) strid_t {
+    return sys_stream.openMemoryStream(
+        true,
+        buf.?[0..len],
+        @enumFromInt(@as(u3, @intCast(fmode))),
+        rock,
+    ) catch |err| {
+        glk_log.warn("failed to open unicode memory stream: {}", .{err});
+        return null;
+    };
+}
+
+// test "Memory stream" {
+//     try initSubsystem(std.heap.c_allocator);
+//     defer deinitSubsystem();
+
+//     const buf_len: usize = 128;
+
+//     {
+//         var buf1: [buf_len]u8 = undefined;
+//         const str1 = glk_stream_open_memory(
+//             &buf1,
+//             buf1.len,
+//             core.c_glk.filemode_Write,
+//             1,
+//         );
+//         try std.testing.expect(str1 != null);
+//         errdefer glk_stream_close(str1, null);
+
+//         for (0..(buf_len - 1)) |i| glk_put_char_stream(str1, @truncate(i));
+
+//         var result1: stream_result_t = undefined;
+//         glk_stream_close(str1, &result1);
+
+//         try std.testing.expectEqual(buf_len - 1, result1.readcount);
+//         try std.testing.expectEqual(@as(usize, 0), result1.writecount);
+
+//         for (0..(buf_len - 1)) |i| try std.testing.expectEqual(@as(u8, @truncate(i)), buf1[i]);
+//     }
+// }
 
 pub export fn glk_stream_close(
     str: strid_t,
