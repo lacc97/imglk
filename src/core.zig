@@ -81,10 +81,6 @@ fn version(major: u16, minor: u8, patch: u8) u32 {
 
 // --- Exported ---
 
-pub export fn glk_exit() void {
-    std.process.exit(0);
-}
-
 pub export fn glk_set_interrupt_handler(handler: GlkInterruptHandler) void {
     interrupt_handler = handler;
 }
