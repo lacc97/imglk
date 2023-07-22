@@ -77,12 +77,26 @@ const Stream = struct {
     ) Error!u32 {
         if (!self.flags.read) return Error.NotAvailable;
 
-        switch (self.data) {
-            .memory => |*m| {
-                const readcount = m.stream.read(buf) catch unreachable;
-                if (readcount == 0) return Error.EOF;
-                return @intCast(readcount);
-            },
+        if (!self.flags.unicode) {
+            return self.getCharsRaw(buf);
+        } else {
+            var buf_uni: [static_buffer_size_uni]u32 = undefined;
+
+            var i: usize = 0;
+            read_loop: while (i < buf.len) {
+                const read_buf_len: usize = @min(static_buffer_size, buf.len);
+                const read_count = self.getUniCharsRaw(buf_uni[0..read_buf_len]) catch |err| {
+                    if (err == Error.EOF and i > 0) break :read_loop;
+                    return err;
+                };
+
+                for (buf_uni[0..read_count]) |ch| {
+                    buf[i] = if (ch >= 0x100) '?' else @truncate(ch);
+                    i += 1;
+                }
+            }
+
+            return @intCast(i);
         }
     }
     pub fn getLine(
@@ -94,11 +108,18 @@ const Stream = struct {
         // Must have at least some space for the null terminator.
         std.debug.assert(buf.len > 0);
 
-        switch (self.data) {
-            .memory => |*m| {
-                _ = m;
-            },
+        var i: usize = 0;
+        read_loop: while (i < (buf.len - 1)) : (i += 1) {
+            const ch = self.getChar() catch |err| {
+                if (err == Error.EOF) break :read_loop;
+                return err;
+            };
+            buf[i] = ch;
+            if (ch == '\n') break;
         }
+        buf[i] = 0;
+
+        return @intCast(i);
     }
 
     pub fn putChar(
@@ -137,15 +158,59 @@ const Stream = struct {
     pub fn getUniChar(
         self: *@This(),
     ) Error!u32 {
-        _ = self;
+        var ch: [1]u32 = undefined;
+        _ = try self.getUniChars(&ch);
+        return ch[0];
     }
-
     pub fn getUniChars(
         self: *@This(),
-        buf: []u32,
+        buf_uni: []u32,
     ) Error!u32 {
-        _ = buf;
-        _ = self;
+        if (!self.flags.read) return Error.NotAvailable;
+
+        if (self.flags.unicode) {
+            return self.getUniCharsRaw(buf_uni);
+        } else {
+            var buf: [static_buffer_size_uni]u8 = undefined;
+
+            var i: usize = 0;
+            read_loop: while (i < buf_uni.len) {
+                const read_buf_len: usize = @min(static_buffer_size, buf_uni.len);
+                const read_count = self.getCharsRaw(buf[0..read_buf_len]) catch |err| {
+                    if (err == Error.EOF and i > 0) break :read_loop;
+                    return err;
+                };
+
+                for (buf[0..read_count]) |ch| {
+                    buf_uni[i] = ch;
+                    i += 1;
+                }
+            }
+
+            return @intCast(i);
+        }
+    }
+    pub fn getUniLine(
+        self: *@This(),
+        buf_uni: []u32,
+    ) Error!u32 {
+        if (!self.flags.read) return Error.NotAvailable;
+
+        // Must have at least some space for the null terminator.
+        std.debug.assert(buf_uni.len > 0);
+
+        var i: usize = 0;
+        while (i < (buf_uni.len - 1)) : (i += 1) {
+            const ch = self.getUniChar() catch |err| {
+                if (err == Error.EOF) break;
+                return err;
+            };
+            buf_uni[i] = ch;
+            if (ch == '\n') break;
+        }
+        buf_uni[i] = 0;
+
+        return @intCast(i);
     }
 
     pub fn putUniChar(
@@ -181,6 +246,24 @@ const Stream = struct {
 
     // --- Private functions ---
 
+    fn getCharsRaw(
+        self: *@This(),
+        buf: []u8,
+    ) Error!u32 {
+        std.debug.assert(!self.flags.unicode);
+
+        switch (self.data) {
+            .memory => |*m| {
+                const rc = m.stream.read(buf) catch unreachable;
+                if (rc == 0) return Error.EOF;
+
+                const readcount: u32 = @intCast(rc);
+                self.r_count += readcount;
+                return @intCast(readcount);
+            },
+        }
+    }
+
     fn putCharsRaw(
         self: *@This(),
         buf: []const u8,
@@ -189,12 +272,34 @@ const Stream = struct {
 
         switch (self.data) {
             .memory => |*m| {
-                _ = m.stream.write(buf) catch |err| {
+                const wc = m.stream.write(buf) catch |err| {
                     switch (err) {
                         error.NoSpaceLeft => return Error.EOF,
                         else => unreachable,
                     }
                 };
+
+                const writecount: u32 = @intCast(wc);
+                self.w_count += writecount;
+            },
+        }
+    }
+
+    fn getUniCharsRaw(
+        self: *@This(),
+        buf_uni: []u32,
+    ) Error!u32 {
+        std.debug.assert(self.flags.unicode);
+
+        switch (self.data) {
+            .memory => |*m| {
+                var rc = m.stream.read(std.mem.sliceAsBytes(buf_uni)) catch unreachable;
+                rc /= 4;
+                if (rc == 0) return Error.EOF;
+
+                const readcount: u32 = @intCast(rc);
+                self.r_count += readcount;
+                return readcount;
             },
         }
     }
@@ -207,12 +312,17 @@ const Stream = struct {
 
         switch (self.data) {
             .memory => |*m| {
-                _ = m.stream.write(std.mem.sliceAsBytes(buf_uni)) catch |err| {
+                var wc = m.stream.write(std.mem.sliceAsBytes(buf_uni)) catch |err| {
                     switch (err) {
                         error.NoSpaceLeft => return Error.EOF,
                         else => unreachable,
                     }
                 };
+                wc /= 4;
+                if (wc == 0) return Error.EOF;
+
+                const writecount: u32 = @intCast(wc);
+                self.w_count += writecount;
             },
         }
     }
@@ -413,6 +523,38 @@ pub export fn glk_put_buffer_stream(
     };
 }
 
+pub export fn glk_get_char_stream(
+    str: strid_t,
+) i32 {
+    return str.?.getChar() catch |err| {
+        if (err == Error.EOF) return -1;
+        glk_log.warn("failed to get char: {}", .{err});
+        return -1;
+    };
+}
+
+pub export fn glk_get_line_stream(
+    str: strid_t,
+    buf: [*]u8,
+    len: u32,
+) u32 {
+    return str.?.getLine(buf[0..len]) catch |err| {
+        glk_log.warn("failed to get line: {}", .{err});
+        return 0;
+    };
+}
+
+pub export fn glk_get_buffer_stream(
+    str: strid_t,
+    buf: [*]u8,
+    len: u32,
+) u32 {
+    return str.?.getChars(buf[0..len]) catch |err| {
+        glk_log.warn("failed to get buffer: {}", .{err});
+        return 0;
+    };
+}
+
 pub export fn glk_put_char(
     ch: u8,
 ) callconv(.C) void {
@@ -457,6 +599,38 @@ pub export fn glk_put_buffer_stream_uni(
 ) callconv(.C) void {
     str.?.putUniChars(buf[0..len]) catch |err| {
         glk_log.warn("failed to put char: {}", .{err});
+    };
+}
+
+pub export fn glk_get_char_stream_uni(
+    str: strid_t,
+) i32 {
+    return @bitCast(str.?.getUniChar() catch |err| {
+        if (err == Error.EOF) return -1;
+        glk_log.warn("failed to get unicode char: {}", .{err});
+        return -1;
+    });
+}
+
+pub export fn glk_get_line_stream_uni(
+    str: strid_t,
+    buf_uni: [*]u32,
+    len: u32,
+) u32 {
+    return str.?.getUniLine(buf_uni[0..len]) catch |err| {
+        glk_log.warn("failed to get unicode line: {}", .{err});
+        return 0;
+    };
+}
+
+pub export fn glk_get_buffer_stream_uni(
+    str: strid_t,
+    buf_uni: [*]u32,
+    len: u32,
+) u32 {
+    return str.?.getUniChars(buf_uni[0..len]) catch |err| {
+        glk_log.warn("failed to get unicode buffer: {}", .{err});
+        return 0;
     };
 }
 

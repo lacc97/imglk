@@ -32,6 +32,7 @@ pub fn build(
         .optimize = params.optimize,
     });
     lib.emit_asm = .emit;
+    lib.addIncludePath("src/c");
     lib.addIncludePath("lib/cimgui");
     lib.addIncludePath("lib/cimgui/generator/output");
     lib.linkLibrary(cimgui_lib);
