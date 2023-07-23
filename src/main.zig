@@ -12,7 +12,7 @@ const imgui = @import("cimgui");
 const gl_log = std.log.scoped(.gl);
 
 comptime {
-    // std.testing.refAllDecls(FileRefSubsystem);
+    std.testing.refAllDecls(@import("latin1.zig"));
 }
 
 fn runGlk() !void {
