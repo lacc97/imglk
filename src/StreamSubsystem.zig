@@ -27,7 +27,7 @@ pub const Error = error{
     InvalidArgument,
 };
 
-const Stream = struct {
+pub const Stream = struct {
     // --- Fields ---
 
     rock: u32,
@@ -46,6 +46,7 @@ const Stream = struct {
         memory: struct {
             stream: std.io.FixedBufferStream([]u8),
         },
+        window: void, // for now
     },
 
     // --- Public types ---
@@ -261,6 +262,7 @@ const Stream = struct {
                 self.r_count += readcount;
                 return @intCast(readcount);
             },
+            .window => return Error.NotAvailable,
         }
     }
 
@@ -282,6 +284,7 @@ const Stream = struct {
                 const writecount: u32 = @intCast(wc);
                 self.w_count += writecount;
             },
+            .window => return Error.NotAvailable,
         }
     }
 
@@ -301,6 +304,7 @@ const Stream = struct {
                 self.r_count += readcount;
                 return readcount;
             },
+            .window => return Error.NotAvailable,
         }
     }
 
@@ -324,6 +328,7 @@ const Stream = struct {
                 const writecount: u32 = @intCast(wc);
                 self.w_count += writecount;
             },
+            .window => return Error.NotAvailable,
         }
     }
 };
@@ -514,6 +519,26 @@ pub export fn glk_stream_close(
     str: strid_t,
     result: ?*stream_result_t,
 ) callconv(.C) void {
+    if (str == null) return;
+
+    const s = str.?;
+    if (s.data == .window) {
+        glk_log.warn("attempted to close window stream", .{});
+        return;
+    }
+    sys_stream.closeStream(str, result);
+}
+pub export fn imglk_window_stream_close(
+    str: strid_t,
+    result: ?*stream_result_t,
+) void {
+    if (str == null) return;
+
+    const s = str.?;
+    if (s.data != .window) {
+        glk_log.err("BUG: tried to close stream {*} but it is not a window stream", .{str.?});
+        return;
+    }
     sys_stream.closeStream(str, result);
 }
 
@@ -673,4 +698,21 @@ pub export fn glk_put_buffer_uni(
     len: u32,
 ) callconv(.C) void {
     glk_put_buffer_stream_uni(sys_stream.current, buf, len);
+}
+
+pub export fn glk_set_style_stream(
+    str: strid_t,
+    val: u32,
+) void {
+    std.debug.assert(str != null);
+
+    _ = val;
+
+    // TODO: stub
+}
+
+pub export fn glk_set_style(
+    val: u32,
+) void {
+    glk_set_style_stream(sys_stream.current, val);
 }

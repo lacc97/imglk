@@ -189,11 +189,7 @@ pub fn getCurrentContext() ?Context {
     }
 }
 pub fn setCurrentContext(ctx_opt: ?Context) void {
-    if (ctx_opt) |ctx| {
-        c.igSetCurrentContext(ctx.ptr);
-    } else {
-        c.igSetCurrentContext(null);
-    }
+    c.igSetCurrentContext(if (ctx_opt) |ctx| ctx.ptr else null);
 }
 
 // -- Functions that require a valid current context.
