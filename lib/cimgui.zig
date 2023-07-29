@@ -59,14 +59,14 @@ pub const Context = struct {
 
     // --- Public functions ---
 
-    pub fn init() @This() {
+    pub inline fn init() @This() {
         return .{ .ptr = c.igCreateContext(null) };
     }
-    pub fn deinit(self: @This()) void {
+    pub inline fn deinit(self: @This()) void {
         c.igDestroyContext(self.ptr);
     }
 
-    pub fn getIO(self: @This()) IO {
+    pub inline fn getIO(self: @This()) IO {
         return .{ .ptr = &self.ptr.IO };
     }
 };
@@ -95,7 +95,7 @@ pub const IO = struct {
     };
 
     // --- Public functions ---
-    pub fn setConfigFlag(self: @This(), flag: ConfigBitFlag, value: bool) void {
+    pub inline fn setConfigFlag(self: @This(), flag: ConfigBitFlag, value: bool) void {
         // Reset flag bit.
         self.ptr.ConfigFlags &= ~@intFromEnum(flag);
 
@@ -107,16 +107,16 @@ pub const IO = struct {
 // --- Namespaces ---
 
 pub const glfw = struct {
-    pub fn initForOpenGL(window: *anyopaque, install_callbacks: bool) !void {
+    pub inline fn initForOpenGL(window: *anyopaque, install_callbacks: bool) !void {
         if (!c.ImGui_ImplGlfw_InitForOpenGL(@ptrCast(window), install_callbacks)) {
             return Error.dear_imgui;
         }
     }
-    pub fn deinit() void {
+    pub inline fn deinit() void {
         c.ImGui_ImplGlfw_Shutdown();
     }
 
-    pub fn newFrame() void {
+    pub inline fn newFrame() void {
         c.ImGui_ImplGlfw_NewFrame();
     }
 };
@@ -138,7 +138,7 @@ const GLSLVersion = enum {
 };
 
 pub const opengl3 = struct {
-    pub fn init(glsl_version: GLSLVersion) !void {
+    pub inline fn init(glsl_version: GLSLVersion) !void {
         switch (glsl_version) {
             .@"1.10", .@"1.20" => std.debug.panic("wrong glsl version: expected at least {s}, got {s}", .{
                 @tagName(.@"1.30"),
@@ -166,68 +166,68 @@ pub const opengl3 = struct {
             return Error.dear_imgui;
         }
     }
-    pub fn deinit() void {
+    pub inline fn deinit() void {
         c.ImGui_ImplOpenGL3_Shutdown();
     }
 
-    pub fn newFrame() void {
+    pub inline fn newFrame() void {
         c.ImGui_ImplOpenGL3_NewFrame();
     }
 
-    pub fn renderDrawData(draw_data: *c.ImDrawData) void {
+    pub inline fn renderDrawData(draw_data: *c.ImDrawData) void {
         c.ImGui_ImplOpenGL3_RenderDrawData(draw_data);
     }
 };
 
 // --- Public functions ---
 
-pub fn getCurrentContext() ?Context {
+pub inline fn getCurrentContext() ?Context {
     if (c.igGetCurrentContext()) |ctx| {
         return .{ .ptr = ctx };
     } else {
         return null;
     }
 }
-pub fn setCurrentContext(ctx_opt: ?Context) void {
+pub inline fn setCurrentContext(ctx_opt: ?Context) void {
     c.igSetCurrentContext(if (ctx_opt) |ctx| ctx.ptr else null);
 }
 
 // -- Functions that require a valid current context.
 
-pub fn getIO() IO {
+pub inline fn getIO() IO {
     return getCurrentContext().?.getIO();
 }
 
-pub fn newFrame() void {
+pub inline fn newFrame() void {
     c.igNewFrame();
 }
 
-pub fn render() void {
+pub inline fn render() void {
     c.igRender();
 }
 
 // TODO: zig wrapper
-pub fn getDrawData() *c.ImDrawData {
+pub inline fn getDrawData() *c.ImDrawData {
     return c.igGetDrawData();
 }
 
-pub fn showDemoWindow(p_open: ?*bool) void {
+pub inline fn showDemoWindow(p_open: ?*bool) void {
     c.igShowDemoWindow(p_open);
 }
 
 // -- Drawing functions
 
-pub fn begin(name: [:0]const u8, p_open: ?*bool, flags: WindowFlags) bool {
+pub inline fn begin(name: [:0]const u8, p_open: ?*bool, flags: WindowFlags) bool {
     return c.igBegin(name.ptr, p_open, @bitCast(flags));
 }
-pub fn end() void {
+pub inline fn end() void {
     return c.igEnd();
 }
 
-pub fn text(txt: [:0]const u8) void {
+pub inline fn text(txt: [:0]const u8) void {
     c.igText(txt);
 }
 
-pub fn checkbox(txt: [:0]const u8, b: *bool) bool {
+pub inline fn checkbox(txt: [:0]const u8, b: *bool) bool {
     return c.igCheckbox(txt.ptr, b);
 }
