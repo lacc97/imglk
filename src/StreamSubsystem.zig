@@ -2,6 +2,8 @@ const std = @import("std");
 const core = @import("core.zig");
 
 const ObjectPool = @import("object_pool.zig").ObjectPool;
+const Style = @import("WindowSubsystem.zig").Style;
+const WindowData = @import("WindowSubsystem.zig").WindowData;
 
 const glk_log = std.log.scoped(.glk);
 
@@ -25,7 +27,7 @@ pub const Error = error{
     EOF,
     NotAvailable,
     InvalidArgument,
-};
+} || WindowData.Error;
 
 pub const Stream = struct {
     // --- Fields ---
@@ -46,7 +48,7 @@ pub const Stream = struct {
         memory: struct {
             stream: std.io.FixedBufferStream([]u8),
         },
-        window: void, // for now
+        window: *WindowData,
     },
 
     // --- Public types ---
@@ -59,6 +61,17 @@ pub const Stream = struct {
         self: *@This(),
     ) void {
         _ = self;
+    }
+
+    // -- Style
+
+    pub fn setStyle(self: *@This(), style: Style) Error!void {
+        if (!self.flags.write) return Error.NotAvailable;
+
+        switch (self.data) {
+            .window => |*w| try w.setStyle(style),
+            else => return Error.NotAvailable,
+        }
     }
 
     // -- Seeking
@@ -328,7 +341,7 @@ pub const Stream = struct {
                 const writecount: u32 = @intCast(wc);
                 self.w_count += writecount;
             },
-            .window => return Error.NotAvailable,
+            .window => |w| try w.putText(buf_uni),
         }
     }
 };
@@ -340,6 +353,23 @@ pub fn initSubsystem(alloc: std.mem.Allocator) !void {
 }
 pub fn deinitSubsystem() void {
     sys_stream.deinit();
+}
+
+pub fn openWindowStream(
+    windata: *WindowData,
+) !*Stream {
+    _ = windata;
+}
+
+pub fn closeWindowStream(
+    str: *Stream,
+    result: ?*stream_result_t,
+) void {
+    if (str.data != .window) {
+        glk_log.err("BUG: tried to close stream {*} but it is not a window stream", .{str});
+        return;
+    }
+    sys_stream.closeStream(str, result);
 }
 
 // --- Private functions
@@ -388,17 +418,15 @@ fn openMemoryStream(self: *@This(), unicode: bool, buf: []u8, fmode: core.FileMo
 
     return str;
 }
-fn closeStream(self: *@This(), str: ?*Stream, resultptr: ?*stream_result_t) void {
-    const s = str.?;
-
+fn closeStream(self: *@This(), str: *Stream, resultptr: ?*stream_result_t) void {
     if (resultptr) |r| {
-        r.readcount = s.r_count;
-        r.writecount = s.w_count;
+        r.readcount = str.r_count;
+        r.writecount = str.w_count;
     }
 
-    if (self.current == s) self.current = null;
-    s.deinit();
-    self.pool.dealloc(s);
+    if (self.current == str) self.current = null;
+    str.deinit();
+    self.pool.dealloc(str);
 }
 
 // --- Exported ---
@@ -526,20 +554,7 @@ pub export fn glk_stream_close(
         glk_log.warn("attempted to close window stream", .{});
         return;
     }
-    sys_stream.closeStream(str, result);
-}
-pub export fn imglk_window_stream_close(
-    str: strid_t,
-    result: ?*stream_result_t,
-) void {
-    if (str == null) return;
-
-    const s = str.?;
-    if (s.data != .window) {
-        glk_log.err("BUG: tried to close stream {*} but it is not a window stream", .{str.?});
-        return;
-    }
-    sys_stream.closeStream(str, result);
+    sys_stream.closeStream(s, result);
 }
 
 pub export fn glk_put_char_stream(

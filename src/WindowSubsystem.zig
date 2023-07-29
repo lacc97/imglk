@@ -1,10 +1,12 @@
 const std = @import("std");
+const assert = std.debug.assert;
 const core = @import("core.zig");
 
 const glfw = @import("glfw");
 const gl = @import("gl");
 const imgui = @import("cimgui");
 
+const unicode = @import("unicode.zig");
 const stream_sys = @import("StreamSubsystem.zig");
 
 const ObjectPool = @import("object_pool.zig").ObjectPool;
@@ -19,6 +21,19 @@ var main_window: glfw.Window = undefined;
 var main_ui: imgui.Context = undefined;
 
 var pool: ObjectPool(Window) = undefined;
+
+var root: winid_t = null;
+
+var window_styles: std.EnumArray(WindowKind, std.EnumArray(Style, StyleDescriptor)) = blk: {
+    var ws = std.EnumArray(WindowKind, std.EnumArray(Style, StyleDescriptor)).initUndefined();
+
+    ws.set(.text_grid, .{});
+    ws.set(.text_buffer, .{});
+
+    // The other window kinds do not use styles.
+
+    break :blk ws;
+};
 
 // --- Public functions ---
 
@@ -78,6 +93,184 @@ pub fn deinitSubsystem() void {
 
 pub const Error = error{
     GLFW,
+    InvalidArgument,
+};
+
+pub const WindowKind = enum(u3) {
+    blank = core.c_glk.wintype_Blank,
+    graphics = core.c_glk.wintype_Graphics,
+    pair = core.c_glk.wintype_Pair,
+    text_buffer = core.c_glk.wintype_TextBuffer,
+    text_grid = core.c_glk.wintype_TextGrid,
+};
+
+pub const WindowMethod = packed struct {
+    direction: enum(u4) {
+        left = core.c_glk.winmethod_Left,
+        right = core.c_glk.winmethod_Right,
+        above = core.c_glk.winmethod_Above,
+        below = core.c_glk.winmethod_Below,
+    },
+    division: enum(u4) {
+        fixed = core.c_glk.winmethod_Fixed >> 4,
+        proportional = core.c_glk.winmetho_Proportional >> 4,
+    },
+    border: enum(u4) {
+        border = core.c_glk.winmethod_Border >> 8,
+        no_border = core.c_glk.winmethod_NoBorder >> 8,
+    },
+    _: u20,
+};
+
+pub const Style = enum(u32) {
+    normal = core.c_glk.style_Normal,
+    emphasized = core.c_glk.style_Emphasized,
+    preformatted = core.c_glk.style_Preformatted,
+    header = core.c_glk.style_Header,
+    subheader = core.c_glk.style_Subheader,
+    alert = core.c_glk.style_Alert,
+    note = core.c_glk.style_Note,
+    block_quote = core.c_glk.style_BlockQuote,
+    input = core.c_glk.style_Input,
+    user1 = core.c_glk.style_User1,
+    user2 = core.c_glk.style_User2,
+};
+
+pub const StyleDescriptor = struct {};
+
+pub const WindowData = struct {
+    // --- Fields ---
+
+    allocator: std.mem.Allocator,
+    // arena: std.heap.ArenaAllocator,
+    vtable: VTable,
+    w: union(WindowKind) {
+        blank: void,
+        graphics: void,
+        pair: void,
+        text_buffer: std.ArrayListUnmanaged(u8),
+        text_grid: void,
+    },
+
+    // --- Globals ---
+
+    const text_buffer_vtable: VTable = .{
+        .clear = tbClear,
+        .put_text = tbPutText,
+    };
+
+    // --- Public types ---
+
+    pub const Error = std.mem.Allocator.Error;
+
+    // --- Public functions ---
+
+    pub fn init(
+        allocator: std.mem.Allocator,
+        kind: WindowKind,
+    ) @This() {
+        return .{
+            .allocator = allocator,
+            .vtable = switch (kind) {
+                .text_buffer => text_buffer_vtable,
+                else => .{},
+            },
+            .w = switch (kind) {
+                .text_buffer => .{ .text_buffer = .{} },
+                .blank => .{ .blank = {} },
+                .graphics => .{ .graphics = {} },
+                .pair => .{ .pair = {} },
+                .text_grid => .{ .text_grid = {} },
+            },
+        };
+    }
+
+    pub fn deinit(self: *@This()) void {
+        switch (self.w) {
+            .text_buffer => |*tb| tb.deinit(self.allocator),
+            else => {},
+        }
+    }
+
+    pub fn clear(
+        self: *@This(),
+    ) WindowData.Error!void {
+        return self.vtable.clear(self);
+    }
+
+    pub fn setStyle(
+        self: *@This(),
+        style: Style,
+    ) WindowData.Error!void {
+        return self.vtable.set_style(self, style);
+    }
+
+    pub fn putText(
+        self: *@This(),
+        codepoints: []const u32,
+    ) WindowData.Error!void {
+        return self.vtable.put_text(self, codepoints);
+    }
+
+    // --- Private types ---
+
+    const VTable = struct {
+        clear: *const fn (self: *WindowData) WindowData.Error!void = noopClear,
+        set_style: *const fn (self: *WindowData, style: Style) WindowData.Error!void = noopSetStyle,
+        put_text: *const fn (self: *WindowData, codepoints: []const u32) WindowData.Error!void = noopPutText,
+    };
+
+    // --- Private functions ---
+
+    // -- Blank
+
+    fn noopClear(
+        self: *@This(),
+    ) @This().Error!void {
+        _ = self;
+    }
+
+    fn noopSetStyle(
+        self: *@This(),
+        style: Style,
+    ) @This().Error!void {
+        _ = style;
+        _ = self;
+    }
+
+    fn noopPutText(
+        self: *@This(),
+        codepoints: []const u32,
+    ) @This().Error!void {
+        _ = codepoints;
+        _ = self;
+    }
+
+    // -- Text buffer
+
+    fn tbClear(
+        self: *@This(),
+    ) @This().Error!void {
+        assert(self.w == .text_buffer);
+
+        self.w.text_buffer.clearRetainingCapacity();
+    }
+
+    fn tbPutText(
+        self: *@This(),
+        codepoints: []const u32,
+    ) @This().Error!void {
+        assert(self.w == .text_buffer);
+
+        const old_text_size = self.w.text_buffer.items.len;
+        const new_text_size = old_text_size + 4 * codepoints.len;
+        try self.w.text_buffer.resize(self.allocator, new_text_size);
+        const actual_new_text_size = unicode.codepoint.utf8EncodeSlice(
+            codepoints,
+            self.w.text_buffer.items[old_text_size..],
+        ) + old_text_size;
+        try self.w.text_buffer.resize(self.allocator, actual_new_text_size);
+    }
 };
 
 pub const Window = struct {
@@ -85,9 +278,7 @@ pub const Window = struct {
 
     rock: u32,
     str: *Stream,
-    data: union(enum) {
-        nil: void,
-    },
+    data: WindowData,
 
     // --- Public functions ---
 
@@ -95,7 +286,8 @@ pub const Window = struct {
         self: *@This(),
         result: ?*stream_result_t,
     ) void {
-        stream_sys.imglk_window_stream_close(self.str, result);
+        stream_sys.closeWindowStream(self.str, result);
+        self.data.deinit();
     }
 };
 
@@ -110,10 +302,34 @@ fn getNextWindow(
     return next_win;
 }
 
+fn openWindow(
+    split: ?*Window,
+    kind: WindowKind,
+    method: WindowMethod,
+    rock: u32,
+) !*Window {
+    _ = kind;
+    _ = method;
+    if (split == null and root != null) return Error.InvalidArgument;
+
+    const win = try pool.alloc();
+    errdefer pool.dealloc(win);
+
+    win.* = Window{
+        .rock = rock,
+        .str = undefined,
+        .data = WindowData.init(pool.arena.child_allocator),
+    };
+    win.str = try stream_sys.openWindowStream(&win.data);
+
+    return win;
+}
+
 fn closeWindow(
     win: *Window,
     result: ?*stream_result_t,
 ) void {
+    if (root == win) root = null;
     win.deinit(result);
     pool.dealloc(win);
 }
@@ -197,11 +413,11 @@ pub export fn glk_window_set_echo_stream(
     win: winid_t,
     str: strid_t,
 ) void {
+    _ = str;
     std.debug.assert(win != null);
 
-    _ = str;
-
-    // TODO: stub
+    const w = win.?;
+    _ = w;
 }
 
 pub export fn glk_window_clear(
@@ -209,7 +425,10 @@ pub export fn glk_window_clear(
 ) void {
     std.debug.assert(win != null);
 
-    // TODO: stub
+    const w = win.?;
+    w.data.clear() catch |err| {
+        glk_log.warn("failed to clear: {}", .{err});
+    };
 }
 
 pub export fn glk_window_move_cursor(
