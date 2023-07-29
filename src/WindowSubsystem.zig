@@ -39,7 +39,7 @@ var window_styles: std.EnumArray(WindowKind, std.EnumArray(Style, StyleDescripto
 
 pub fn initSubsystem(alloc: std.mem.Allocator) !void {
     glfw.setErrorCallback(errorCallback);
-    if (!glfw.init(.{})) {
+    if (!glfw.init(.{ .platform = .wayland })) {
         glk_log.err("failed to initialise glfw: {?s}", .{glfw.getErrorString()});
         return Error.GLFW;
     }
