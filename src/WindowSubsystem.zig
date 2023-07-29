@@ -119,13 +119,12 @@ pub const WindowMethod = packed struct {
         border = core.c_glk.winmethod_Border >> 8,
         no_border = core.c_glk.winmethod_NoBorder >> 8,
     },
-    _: u23 = undefined,
 
     pub fn from(c: u32) WindowMethod {
         return .{
             .direction = @enumFromInt(@as(u4, @truncate((c & core.c_glk.winmethod_DirMask) >> 0))),
             .division = @enumFromInt(@as(u4, @truncate((c & core.c_glk.winmethod_DivisionMask) >> 4))),
-            .border = @enumFromInt(@as(u4, @truncate((c & core.c_glk.winmethod_BorderMask) >> 8))),
+            .border = @enumFromInt(@as(u1, @truncate((c & core.c_glk.winmethod_BorderMask) >> 8))),
         };
     }
 };
@@ -314,12 +313,11 @@ fn openWindow(
     split: ?*Window,
     size: u32,
     kind: WindowKind,
-    method: WindowMethod,
+    method: ?WindowMethod,
     rock: u32,
 ) !*Window {
     _ = size;
-    _ = method;
-    if (split == null and root != null) return Error.InvalidArgument;
+    if ((split == null or method == null) and root != null) return Error.InvalidArgument;
 
     const win = try pool.alloc();
     errdefer pool.dealloc(win);
@@ -395,7 +393,7 @@ pub export fn glk_window_open(
         split,
         size,
         @enumFromInt(wintype),
-        WindowMethod.from(method),
+        if (method != 0) WindowMethod.from(method) else null,
         rock,
     ) catch |err| {
         glk_log.warn("failed to open window: {}", .{err});
