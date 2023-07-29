@@ -113,13 +113,21 @@ pub const WindowMethod = packed struct {
     },
     division: enum(u4) {
         fixed = core.c_glk.winmethod_Fixed >> 4,
-        proportional = core.c_glk.winmetho_Proportional >> 4,
+        proportional = core.c_glk.winmethod_Proportional >> 4,
     },
-    border: enum(u4) {
+    border: enum(u1) {
         border = core.c_glk.winmethod_Border >> 8,
         no_border = core.c_glk.winmethod_NoBorder >> 8,
     },
-    _: u20,
+    _: u23 = undefined,
+
+    pub fn from(c: u32) WindowMethod {
+        return .{
+            .direction = @enumFromInt(@as(u4, @truncate((c & core.c_glk.winmethod_DirMask) >> 0))),
+            .division = @enumFromInt(@as(u4, @truncate((c & core.c_glk.winmethod_DivisionMask) >> 4))),
+            .border = @enumFromInt(@as(u4, @truncate((c & core.c_glk.winmethod_BorderMask) >> 8))),
+        };
+    }
 };
 
 pub const Style = enum(u32) {
@@ -268,7 +276,7 @@ pub const WindowData = struct {
         const actual_new_text_size = unicode.codepoint.utf8EncodeSlice(
             codepoints,
             self.w.text_buffer.items[old_text_size..],
-        ) + old_text_size;
+        ).len + old_text_size;
         try self.w.text_buffer.resize(self.allocator, actual_new_text_size);
     }
 };
@@ -304,11 +312,12 @@ fn getNextWindow(
 
 fn openWindow(
     split: ?*Window,
+    size: u32,
     kind: WindowKind,
     method: WindowMethod,
     rock: u32,
 ) !*Window {
-    _ = kind;
+    _ = size;
     _ = method;
     if (split == null and root != null) return Error.InvalidArgument;
 
@@ -318,10 +327,11 @@ fn openWindow(
     win.* = Window{
         .rock = rock,
         .str = undefined,
-        .data = WindowData.init(pool.arena.child_allocator),
+        .data = WindowData.init(pool.arena.child_allocator, kind),
     };
     win.str = try stream_sys.openWindowStream(&win.data);
 
+    if (root == null) root = win;
     return win;
 }
 
@@ -380,12 +390,17 @@ pub export fn glk_window_open(
     wintype: u32,
     rock: u32,
 ) winid_t {
-    _ = rock;
-    _ = wintype;
-    _ = size;
-    _ = method;
-    _ = split;
-    return null;
+    if (root != null) return null;
+    return openWindow(
+        split,
+        size,
+        @enumFromInt(wintype),
+        WindowMethod.from(method),
+        rock,
+    ) catch |err| {
+        glk_log.warn("failed to open window: {}", .{err});
+        return null;
+    };
 }
 
 pub export fn glk_window_close(

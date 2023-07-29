@@ -358,7 +358,16 @@ pub fn deinitSubsystem() void {
 pub fn openWindowStream(
     windata: *WindowData,
 ) !*Stream {
-    _ = windata;
+    const str = try sys_stream.pool.alloc();
+    errdefer sys_stream.pool.dealloc(str);
+
+    str.* = .{
+        .rock = 0,
+        .flags = .{ .unicode = true, .read = false, .write = true },
+        .data = .{ .window = windata },
+    };
+
+    return str;
 }
 
 pub fn closeWindowStream(
