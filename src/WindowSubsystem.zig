@@ -297,16 +297,10 @@ pub const WindowData = struct {
 
         const tb = &self.w.text_buffer;
 
-        const old_text_size = blk: {
-            var size = tb.items.len;
-            // Don't count the null termintator.
-            if (size > 0) size -= 1;
-            break :blk size;
-        };
+        const old_text_size = tb.items.len;
         const new_text_size = old_text_size + 4 * codepoints.len;
 
-        // Add one to count the null terminator.
-        try tb.ensureTotalCapacity(self.allocator, new_text_size + 1);
+        try tb.ensureTotalCapacity(self.allocator, new_text_size);
 
         // We have reserved enough capacity in the previous line.
         assert(tb.capacity >= new_text_size);
@@ -318,12 +312,9 @@ pub const WindowData = struct {
             tb.items[old_text_size..],
         ).len + old_text_size;
 
-        // Write null terminator.
-        tb.items[actual_new_text_size] = 0;
-
         // Resize to correct size.
-        assert(tb.capacity >= actual_new_text_size + 1);
-        tb.items.len = actual_new_text_size + 1;
+        assert(tb.capacity >= actual_new_text_size);
+        tb.items.len = actual_new_text_size;
     }
 
     fn tbDraw(
@@ -332,7 +323,7 @@ pub const WindowData = struct {
         assert(self.w == .text_buffer);
 
         const text = self.w.text_buffer.items;
-        if (text.len > 0) imgui.textWrapped(text[0..(text.len - 1) :0]);
+        if (text.len > 0) imgui.textWrapped(text);
     }
 };
 

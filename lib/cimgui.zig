@@ -256,14 +256,38 @@ pub inline fn endChild() void {
     return c.igEndChild();
 }
 
-pub inline fn text(txt: [:0]const u8) void {
-    c.igText(txt);
+pub inline fn text(txt: []const u8) void {
+    c.igTextEx(txt.ptr, txt.ptr + txt.len, c.ImGuiTextFlags_NoWidthForLargeClippedText);
 }
 
-pub inline fn textWrapped(txt: [:0]const u8) void {
-    c.igTextWrapped(txt);
+pub inline fn textFmt(comptime fmt: []const u8, args: anytype) void {
+    const txt = tmpBufPrint(fmt, args);
+    text(txt);
+}
+
+pub inline fn textWrapped(txt: []const u8) void {
+    c.igPushTextWrapPos(0.0);
+    defer c.igPopTextWrapPos();
+
+    text(txt);
+}
+
+pub inline fn textFmtWrapped(comptime fmt: []const u8, args: anytype) void {
+    const txt = tmpBufPrint(fmt, args);
+    textWrapped(txt);
 }
 
 pub inline fn checkbox(txt: [:0]const u8, b: *bool) bool {
     return c.igCheckbox(txt.ptr, b);
+}
+
+// --- Private functions ---
+
+inline fn tmpBufPrint(comptime fmt: []const u8, args: anytype) []const u8 {
+    const err_txt = "<#! not enough space in temp buffer for formatted string: " ++ fmt ++ " !#>";
+
+    const g = getCurrentContext().?.ptr;
+
+    const buf = g.TempBuffer.Data[0..@as(usize, @intCast(g.TempBuffer.Size))];
+    return std.fmt.bufPrint(buf, fmt, args) catch err_txt;
 }
