@@ -164,6 +164,7 @@ pub const WindowData = struct {
     const text_buffer_vtable: VTable = .{
         .clear = tbClear,
         .put_text = tbPutText,
+        .draw = tbDraw,
     };
 
     // --- Public types ---
@@ -219,12 +220,31 @@ pub const WindowData = struct {
         return self.vtable.put_text(self, codepoints);
     }
 
+    pub fn draw(
+        self: *@This(),
+        avail_region: imgui.Vec2,
+    ) WindowData.Error!void {
+        var name_buf: [64]u8 = undefined;
+        const name = std.fmt.bufPrintZ(&name_buf, "#{*}", .{self}) catch unreachable;
+
+        _ = imgui.beginChild(
+            name,
+            avail_region,
+            true, // for now
+            .{},
+        );
+        defer imgui.endChild();
+        return try self.vtable.draw(self);
+    }
+
     // --- Private types ---
 
     const VTable = struct {
         clear: *const fn (self: *WindowData) WindowData.Error!void = noopClear,
         set_style: *const fn (self: *WindowData, style: Style) WindowData.Error!void = noopSetStyle,
         put_text: *const fn (self: *WindowData, codepoints: []const u32) WindowData.Error!void = noopPutText,
+
+        draw: *const fn (self: *WindowData) WindowData.Error!void = noopDraw,
     };
 
     // --- Private functions ---
@@ -253,6 +273,12 @@ pub const WindowData = struct {
         _ = self;
     }
 
+    fn noopDraw(
+        self: *@This(),
+    ) WindowData.Error!void {
+        _ = self;
+    }
+
     // -- Text buffer
 
     fn tbClear(
@@ -269,14 +295,44 @@ pub const WindowData = struct {
     ) @This().Error!void {
         assert(self.w == .text_buffer);
 
-        const old_text_size = self.w.text_buffer.items.len;
+        const tb = &self.w.text_buffer;
+
+        const old_text_size = blk: {
+            var size = tb.items.len;
+            // Don't count the null termintator.
+            if (size > 0) size -= 1;
+            break :blk size;
+        };
         const new_text_size = old_text_size + 4 * codepoints.len;
-        try self.w.text_buffer.resize(self.allocator, new_text_size);
+
+        // Add one to count the null terminator.
+        try tb.ensureTotalCapacity(self.allocator, new_text_size + 1);
+
+        // We have reserved enough capacity in the previous line.
+        assert(tb.capacity >= new_text_size);
+        tb.items.len = new_text_size;
+
+        // Encode utf8.
         const actual_new_text_size = unicode.codepoint.utf8EncodeSlice(
             codepoints,
-            self.w.text_buffer.items[old_text_size..],
+            tb.items[old_text_size..],
         ).len + old_text_size;
-        try self.w.text_buffer.resize(self.allocator, actual_new_text_size);
+
+        // Write null terminator.
+        tb.items[actual_new_text_size] = 0;
+
+        // Resize to correct size.
+        assert(tb.capacity >= actual_new_text_size + 1);
+        tb.items.len = actual_new_text_size + 1;
+    }
+
+    fn tbDraw(
+        self: *@This(),
+    ) WindowData.Error!void {
+        assert(self.w == .text_buffer);
+
+        const text = self.w.text_buffer.items;
+        if (text.len > 0) imgui.textWrapped(text[0..(text.len - 1) :0]);
     }
 };
 
@@ -340,6 +396,20 @@ fn closeWindow(
     if (root == win) root = null;
     win.deinit(result);
     pool.dealloc(win);
+}
+
+fn drawUi() !void {
+    imgui.setNextWindowPos(.{ .x = 0, .y = 0 }, .always);
+    imgui.setNextWindowSize(imgui.getIO().ptr.DisplaySize, .always);
+    _ = imgui.begin("root", null, .{
+        .no_title_bar = true,
+        .no_resize = true,
+    });
+    defer imgui.end();
+
+    if (root) |w| {
+        try w.data.draw(imgui.getContentRegionAvail());
+    }
 }
 
 // -- Callbacks
@@ -506,7 +576,9 @@ pub export fn glk_select(
     imgui.glfw.newFrame();
     imgui.newFrame();
 
-    imgui.showDemoWindow(null);
+    drawUi() catch {
+        glk_log.err("error drawing ui", .{});
+    };
     imgui.render();
 
     const io = main_ui.getIO();

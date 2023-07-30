@@ -18,6 +18,8 @@ pub const Error = error{
     WrongGLSLVersion,
 };
 
+pub const Vec2 = c.ImVec2;
+
 pub const WindowFlags = packed struct(u32) {
     no_title_bar: bool = false,
     no_resize: bool = false,
@@ -50,6 +52,13 @@ pub const WindowFlags = packed struct(u32) {
 
     // padding
     _: u4 = 0,
+};
+
+pub const WindowCondition = enum(c_int) {
+    always = c.ImGuiCond_Always,
+    once = c.ImGuiCond_Once,
+    first_use_ever = c.ImGuiCond_FirstUseEver,
+    appearing = c.ImGuiCond_Appearing,
 };
 
 pub const Context = struct {
@@ -215,7 +224,23 @@ pub inline fn showDemoWindow(p_open: ?*bool) void {
     c.igShowDemoWindow(p_open);
 }
 
+pub inline fn getContentRegionAvail() Vec2 {
+    var v: Vec2 = undefined;
+    c.igGetContentRegionAvail(&v);
+    return v;
+}
+
 // -- Drawing functions
+
+pub inline fn setNextWindowPos(pos: Vec2, cond: WindowCondition) void {
+    c.igSetNextWindowPos(pos, @intFromEnum(cond), .{ .x = 0, .y = 0 });
+}
+pub inline fn setNextWindowPosPivot(pos: Vec2, cond: WindowCondition, pivot: Vec2) void {
+    c.igSetNextWindowPos(pos, @intFromEnum(cond), pivot);
+}
+pub inline fn setNextWindowSize(size: Vec2, cond: WindowCondition) void {
+    c.igSetNextWindowSize(size, @intFromEnum(cond));
+}
 
 pub inline fn begin(name: [:0]const u8, p_open: ?*bool, flags: WindowFlags) bool {
     return c.igBegin(name.ptr, p_open, @bitCast(flags));
@@ -224,8 +249,19 @@ pub inline fn end() void {
     return c.igEnd();
 }
 
+pub inline fn beginChild(name: [:0]const u8, size: Vec2, border: bool, flags: WindowFlags) bool {
+    return c.igBeginChild_Str(name.ptr, size, border, @bitCast(flags));
+}
+pub inline fn endChild() void {
+    return c.igEndChild();
+}
+
 pub inline fn text(txt: [:0]const u8) void {
     c.igText(txt);
+}
+
+pub inline fn textWrapped(txt: [:0]const u8) void {
+    c.igTextWrapped(txt);
 }
 
 pub inline fn checkbox(txt: [:0]const u8, b: *bool) bool {
