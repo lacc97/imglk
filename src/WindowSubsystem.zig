@@ -149,12 +149,13 @@ pub const WindowData = struct {
     // --- Fields ---
 
     allocator: std.mem.Allocator,
-    // arena: std.heap.ArenaAllocator,
     vtable: VTable,
+    parent: ?*WindowData,
+    cached_size: imgui.Vec2,
     w: union(WindowKind) {
         blank: void,
         graphics: void,
-        pair: void,
+        pair: PairWindow,
         text_buffer: std.ArrayListUnmanaged(u8),
         text_grid: void,
     },
@@ -166,6 +167,9 @@ pub const WindowData = struct {
         .put_text = tbPutText,
         .draw = tbDraw,
     };
+    const pair_vtable: VTable = .{
+        .draw = pDraw,
+    };
 
     // --- Public types ---
 
@@ -173,30 +177,74 @@ pub const WindowData = struct {
 
     // --- Public functions ---
 
+    /// Not to be used for pair windows, use initPair() instead.
     pub fn init(
         allocator: std.mem.Allocator,
+        parent: ?*WindowData,
         kind: WindowKind,
     ) @This() {
+        assert(parent == null or parent.?.w == .pair);
+        assert(kind != .pair);
+
         return .{
             .allocator = allocator,
             .vtable = switch (kind) {
                 .text_buffer => text_buffer_vtable,
-                else => .{},
+                .blank, .graphics, .text_grid => .{},
+                .pair => unreachable,
             },
+            .parent = parent,
+            .cached_size = .{ .x = 0, .y = 0 },
             .w = switch (kind) {
                 .text_buffer => .{ .text_buffer = .{} },
                 .blank => .{ .blank = {} },
                 .graphics => .{ .graphics = {} },
-                .pair => .{ .pair = {} },
+                .pair => unreachable,
                 .text_grid => .{ .text_grid = {} },
             },
         };
     }
 
-    pub fn deinit(self: *@This()) void {
+    pub fn initPair(
+        allocator: std.mem.Allocator,
+        parent: ?*WindowData,
+        key: ?*WindowData,
+        method: WindowMethod,
+        size: u32,
+        first: *WindowData,
+        second: *WindowData,
+    ) WindowData {
+        assert(parent == null or parent.?.w == .pair);
+
+        return .{
+            .allocator = allocator,
+            .vtable = pair_vtable,
+            .parent = parent,
+            .cached_size = .{ .x = 0, .y = 0 },
+            .w = .{
+                .pair = .{
+                    .key = key,
+                    .method = method,
+                    .size = size,
+                    .first = first,
+                    .second = second,
+                },
+            },
+        };
+    }
+
+    pub fn deinit(
+        self: *@This(),
+    ) void {
+        var ancestor = self.parent;
+        while (ancestor) |a| : (ancestor = a.parent) {
+            assert(a.w == .pair);
+            if (a.w.pair.key == self) a.w.pair.key = null;
+        }
+
         switch (self.w) {
             .text_buffer => |*tb| tb.deinit(self.allocator),
-            else => {},
+            .blank, .graphics, .pair, .text_grid => {},
         }
     }
 
@@ -247,6 +295,16 @@ pub const WindowData = struct {
         draw: *const fn (self: *WindowData) WindowData.Error!void = noopDraw,
     };
 
+    const PairWindow = struct {
+        // --- Fields ---
+        key: ?*WindowData,
+        method: WindowMethod,
+        size: u32,
+
+        first: *WindowData,
+        second: *WindowData,
+    };
+
     // --- Private functions ---
 
     // -- Blank
@@ -276,7 +334,7 @@ pub const WindowData = struct {
     fn noopDraw(
         self: *@This(),
     ) WindowData.Error!void {
-        _ = self;
+        self.cached_size = imgui.getContentRegionAvail();
     }
 
     // -- Text buffer
@@ -322,8 +380,35 @@ pub const WindowData = struct {
     ) WindowData.Error!void {
         assert(self.w == .text_buffer);
 
+        self.cached_size = imgui.getContentRegionAvail();
+
         const text = self.w.text_buffer.items;
         if (text.len > 0) imgui.textWrapped(text);
+    }
+
+    // -- Pair
+
+    fn pDraw(
+        self: *@This(),
+    ) WindowData.Error!void {
+        assert(self.w == .pair);
+
+        self.cached_size = imgui.getContentRegionAvail();
+
+        const p = &self.w.pair;
+
+        // TODO: implement actual logic, for now it just splits it down the middle
+        const child_order: [2]*WindowData = switch (p.method.direction) {
+            .left, .above => .{ p.first, p.second },
+            .right, .below => .{ p.second, p.first },
+        };
+
+        const child_region: imgui.Vec2 = switch (p.method.direction) {
+            .left, .right => .{ .x = self.cached_size.x / 2, .y = self.cached_size.y },
+            .above, .below => .{ .x = self.cached_size.x, .y = self.cached_size.y / 2 },
+        };
+
+        inline for (child_order) |c| try c.draw(child_region);
     }
 };
 
@@ -363,8 +448,8 @@ fn openWindow(
     method: ?WindowMethod,
     rock: u32,
 ) !*Window {
-    _ = size;
     if ((split == null or method == null) and root != null) return Error.InvalidArgument;
+    if (kind == .pair) return Error.InvalidArgument;
 
     const win = try pool.alloc();
     errdefer pool.dealloc(win);
@@ -372,11 +457,57 @@ fn openWindow(
     win.* = Window{
         .rock = rock,
         .str = undefined,
-        .data = WindowData.init(pool.arena.child_allocator, kind),
+        .data = WindowData.init(
+            pool.arena.child_allocator,
+            // Parent will be properly set when initialising the parent window.
+            // At the moment setting it null doesn't affect anything regarding
+            // the deinitialisation of window in case of error.
+            null,
+            kind,
+        ),
     };
-    win.str = try stream_sys.openWindowStream(&win.data);
+    {
+        errdefer win.data.deinit();
+        win.str = try stream_sys.openWindowStream(&win.data);
+    }
+    errdefer win.deinit(null);
 
-    if (root == null) root = win;
+    const parent = blk: {
+        // The window to create will become the root window.
+        if (split == null) break :blk null;
+
+        // Otherwise, need to create a pair window to hold the new window. Note that in this branch method must not be null (checked at the start of the function)
+        assert(method != null);
+        const w = try pool.alloc();
+        errdefer pool.dealloc(w);
+
+        w.* = Window{
+            .rock = 0,
+            .str = undefined, // TODO: make the stream nullable (pair windows should never have a stream)
+            .data = WindowData.initPair(
+                pool.arena.child_allocator,
+                split.?.data.parent,
+                &win.data,
+                method.?,
+                size,
+                &win.data,
+                &split.?.data,
+            ),
+        };
+
+        // Here we properly initialise the window parent.
+        win.data.parent = &w.data;
+
+        break :blk w;
+    };
+
+    // TODO: replace split in split.data.parent
+
+    if (root == null) {
+        root = win;
+    } else if (root == split) {
+        root = parent;
+    }
     return win;
 }
 
@@ -449,7 +580,6 @@ pub export fn glk_window_open(
     wintype: u32,
     rock: u32,
 ) winid_t {
-    if (root != null) return null;
     return openWindow(
         split,
         size,
