@@ -104,6 +104,7 @@ pub const IO = struct {
     };
 
     // --- Public functions ---
+
     pub inline fn setConfigFlag(self: @This(), flag: ConfigBitFlag, value: bool) void {
         // Reset flag bit.
         self.ptr.ConfigFlags &= ~@intFromEnum(flag);
@@ -207,6 +208,10 @@ pub inline fn getIO() IO {
     return getCurrentContext().?.getIO();
 }
 
+pub inline fn getStyle() *c.ImGuiStyle {
+    return c.igGetStyle();
+}
+
 pub inline fn newFrame() void {
     c.igNewFrame();
 }
@@ -228,6 +233,10 @@ pub inline fn getContentRegionAvail() Vec2 {
     var v: Vec2 = undefined;
     c.igGetContentRegionAvail(&v);
     return v;
+}
+
+pub inline fn sameLine(offset: f32, spacing: f32) void {
+    c.igSameLine(offset, spacing);
 }
 
 // -- Drawing functions

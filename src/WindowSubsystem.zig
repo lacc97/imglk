@@ -271,6 +271,7 @@ pub const WindowData = struct {
     pub fn draw(
         self: *@This(),
         avail_region: imgui.Vec2,
+        with_border: bool,
     ) WindowData.Error!void {
         var name_buf: [64]u8 = undefined;
         const name = std.fmt.bufPrintZ(&name_buf, "#{*}", .{self}) catch unreachable;
@@ -278,7 +279,7 @@ pub const WindowData = struct {
         _ = imgui.beginChild(
             name,
             avail_region,
-            true, // for now
+            with_border,
             .{},
         );
         defer imgui.endChild();
@@ -397,6 +398,17 @@ pub const WindowData = struct {
 
         const p = &self.w.pair;
 
+        const with_border: bool = p.method.border == .border;
+        const border_compensation: f32 = blk: {
+            if (!with_border) break :blk 0;
+
+            const style = imgui.getStyle();
+            break :blk switch (p.method.direction) {
+                .left, .right => style.ItemSpacing.x / 2,
+                .above, .below => style.ItemSpacing.y / 2,
+            };
+        };
+
         // TODO: implement actual logic, for now it just splits it down the middle
         const child_order: [2]*WindowData = switch (p.method.direction) {
             .left, .above => .{ p.first, p.second },
@@ -404,11 +416,16 @@ pub const WindowData = struct {
         };
 
         const child_region: imgui.Vec2 = switch (p.method.direction) {
-            .left, .right => .{ .x = self.cached_size.x / 2, .y = self.cached_size.y },
-            .above, .below => .{ .x = self.cached_size.x, .y = self.cached_size.y / 2 },
+            .left, .right => .{ .x = (self.cached_size.x / 2) - border_compensation, .y = self.cached_size.y },
+            .above, .below => .{ .x = self.cached_size.x, .y = (self.cached_size.y / 2) - border_compensation },
         };
 
-        inline for (child_order) |c| try c.draw(child_region);
+        try child_order[0].draw(child_region, with_border);
+        switch (p.method.direction) {
+            .left, .right => imgui.sameLine(0.0, -1.0),
+            else => {},
+        }
+        try child_order[1].draw(child_region, with_border);
     }
 };
 
@@ -530,7 +547,7 @@ fn drawUi() !void {
     defer imgui.end();
 
     if (root) |w| {
-        try w.data.draw(imgui.getContentRegionAvail());
+        try w.data.draw(imgui.getContentRegionAvail(), false);
     }
 }
 
