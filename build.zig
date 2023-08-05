@@ -31,10 +31,10 @@ pub fn build(
         .target = params.target,
         .optimize = params.optimize,
     });
-    lib.emit_asm = .emit;
-    lib.addIncludePath("src/c");
-    lib.addIncludePath("lib/cimgui");
-    lib.addIncludePath("lib/cimgui/generator/output");
+    _ = lib.getEmittedAsm();
+    lib.addIncludePath(.{ .path = "src/c" });
+    lib.addIncludePath(.{ .path = "lib/cimgui" });
+    lib.addIncludePath(.{ .path = "lib/cimgui/generator/output" });
     lib.linkLibrary(cimgui_lib);
     lib.addModule("cimgui", cimgui_module);
     linkGlfw(b, lib);
@@ -55,8 +55,8 @@ pub fn build(
         .target = params.target,
         .optimize = params.optimize,
     });
-    terp_model.addIncludePath("src/c");
-    terp_model.addCSourceFile("terp/model.c", &.{});
+    terp_model.addIncludePath(.{ .path = "src/c" });
+    terp_model.addCSourceFiles(&.{"terp/model.c"}, &.{});
     terp_model.linkLibrary(lib);
     b.installArtifact(terp_model);
 }
@@ -74,9 +74,9 @@ fn build_cimgui(
     });
     lib.defineCMacro("IMGUI_DISABLE_OBSOLETE_FUNCTIONS", "1");
     lib.defineCMacro("IMGUI_IMPL_API", "extern \"C\"");
-    lib.addIncludePath(libpath);
-    lib.addIncludePath(libpath ++ "imgui/");
-    lib.addIncludePath(libpath ++ "generator/output/");
+    lib.addIncludePath(.{ .path = libpath });
+    lib.addIncludePath(.{ .path = libpath ++ "imgui/" });
+    lib.addIncludePath(.{ .path = libpath ++ "generator/output/" });
     @import("glfw").addPaths(lib);
     lib.defineCMacro("GLFW_INCLUDE_NONE", null);
     lib.addCSourceFiles(&.{

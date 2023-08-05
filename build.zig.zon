@@ -3,24 +3,24 @@
     .version = "0.1.0",
     .dependencies = .{
         .mach_glfw = .{
-            .url = "https://github.com/hexops/mach-glfw/archive/52a1cc8b86be5973a860373087be49e05e2ec040.tar.gz",
-            .hash = "1220b85a031e70eddbe1125ba5bbf64f590b175ff9fd3333693d56f920f424a1c20a",
+            .url = "https://github.com/hexops/mach-glfw/archive/7d88e72be5f1bc3f8c5ade51688a66569d76b003.tar.gz",
+            .hash = "122092560b504d5a3145e712bb318340ae4d400ae7672bdf69f37771601d4327ded9",
         },
         .glfw = .{
-            .url = "https://github.com/hexops/glfw/archive/ea649150b9053e0f05dec9dcd80e23cd78afe041.tar.gz",
-            .hash = "1220afdfae0ece92c61a6c8350e77cc74f9d6ce03b2afd2ccb881dedda994fd2d194",
+            .url = "https://github.com/hexops/glfw/archive/77086fe2c1bbbf55fa5f2572eb6a604bc3be639f.tar.gz",
+            .hash = "1220667f4ae9cab35b27fa129e265457be42a2f11f2ca57d9ea5d7f56213cbc3ffde",
         },
         .vulkan_headers = .{
-            .url = "https://github.com/hexops/vulkan-headers/archive/03d2e7b7509d41d73d3533c1e2444251f07f6861.tar.gz",
-            .hash = "12200a5e03da16ec2c03d46eba44b3017bf1b673bd8a37d78a9206f735eef01c7543",
+            .url = "https://github.com/hexops/vulkan-headers/archive/b10fb77f54d2d24b04267e1a84e4f63bad9d6d33.tar.gz",
+            .hash = "12209df6486512fccc34a78cc55f2d761f58f36ddb651d6d0fa8c2d1b1f59c6117ad",
         },
         .wayland_headers = .{
-            .url = "https://github.com/hexops/wayland-headers/archive/c61b6c025dec56bfbc58e8c1ae47d67e0529ee93.tar.gz",
-            .hash = "122046c0239b4607eb277f0b205e2639d4d4e1c253a0d29b6b387383e47af69cea2f",
+            .url = "https://github.com/hexops/wayland-headers/archive/3255fb47a6ae42259df17558c6c0db4f59036e68.tar.gz",
+            .hash = "122047bda37ce846be8f120fe920d909a28b257d1ec989b0f753202c8d0e95674527",
         },
         .x11_headers = .{
-            .url = "https://github.com/hexops/x11-headers/archive/a9f8562d5ef5768c69ebf8a577695f0d03edc29f.tar.gz",
-            .hash = "1220fb3d68f8ab9610f920b05928bf8a4b75b6cb82bae4ad7f3d18907ffe3df2ccc7",
+            .url = "https://github.com/hexops/x11-headers/archive/d61bdcece6ad9e9b6327247ff59ef270f7d08ad3.tar.gz",
+            .hash = "1220bfcac525c1e3939903700c75d9925ad8b7abf0f95401e4dced870f1f22de5026",
         },
     },
 }
