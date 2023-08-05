@@ -622,7 +622,7 @@ pub export fn glk_window_get_size(
     widthptr: ?*u32,
     heightptr: ?*u32,
 ) void {
-    std.debug.assert(win != null);
+    assert(win != null);
 
     _ = heightptr;
     _ = widthptr;
@@ -635,7 +635,7 @@ pub export fn glk_window_set_echo_stream(
     str: strid_t,
 ) void {
     _ = str;
-    std.debug.assert(win != null);
+    assert(win != null);
 
     const w = win.?;
     _ = w;
@@ -644,7 +644,7 @@ pub export fn glk_window_set_echo_stream(
 pub export fn glk_window_clear(
     win: winid_t,
 ) void {
-    std.debug.assert(win != null);
+    assert(win != null);
 
     const w = win.?;
     w.data.clear() catch |err| {
@@ -657,7 +657,7 @@ pub export fn glk_window_move_cursor(
     xpos: u32,
     ypos: u32,
 ) void {
-    std.debug.assert(win != null);
+    assert(win != null);
 
     _ = ypos;
     _ = xpos;
@@ -669,10 +669,10 @@ pub export fn glk_request_line_event(
     buflen: u32,
     initlen: u32,
 ) void {
-    std.debug.assert(win != null);
-    std.debug.assert(buf != null);
-    std.debug.assert(buflen > 0);
-    std.debug.assert(initlen <= buflen);
+    assert(win != null);
+    assert(buf != null);
+    assert(buflen > 0);
+    assert(initlen <= buflen);
 
     // TODO: stub
 }
@@ -683,10 +683,10 @@ pub export fn glk_request_line_event_uni(
     buflen: u32,
     initlen: u32,
 ) void {
-    std.debug.assert(win != null);
-    std.debug.assert(buf_uni != null);
-    std.debug.assert(buflen > 0);
-    std.debug.assert(initlen <= buflen);
+    assert(win != null);
+    assert(buf_uni != null);
+    assert(buflen > 0);
+    assert(initlen <= buflen);
 
     // TODO: stub
 }
