@@ -151,7 +151,8 @@ pub const WindowData = struct {
     allocator: std.mem.Allocator,
     vtable: VTable,
     parent: ?*WindowData,
-    cached_size: imgui.Vec2,
+    cached_ui_size: imgui.Vec2,
+    cached_glk_size: GlkSize,
     w: union(WindowKind) {
         blank: void,
         graphics: void,
@@ -175,6 +176,8 @@ pub const WindowData = struct {
 
     pub const Error = std.mem.Allocator.Error;
 
+    pub const GlkSize = struct { w: u32, h: u32 };
+
     // --- Public functions ---
 
     /// Not to be used for pair windows, use initPair() instead.
@@ -194,7 +197,8 @@ pub const WindowData = struct {
                 .pair => unreachable,
             },
             .parent = parent,
-            .cached_size = .{ .x = 0, .y = 0 },
+            .cached_ui_size = .{ .x = 0, .y = 0 },
+            .cached_glk_size = .{ .w = 0, .h = 0 },
             .w = switch (kind) {
                 .text_buffer => .{ .text_buffer = .{} },
                 .blank => .{ .blank = {} },
@@ -220,7 +224,8 @@ pub const WindowData = struct {
             .allocator = allocator,
             .vtable = pair_vtable,
             .parent = parent,
-            .cached_size = .{ .x = 0, .y = 0 },
+            .cached_ui_size = .{ .x = 0, .y = 0 },
+            .cached_glk_size = .{ .w = 0, .h = 0 },
             .w = .{
                 .pair = .{
                     .key = key,
@@ -308,6 +313,38 @@ pub const WindowData = struct {
 
     // --- Private functions ---
 
+    fn uiSizeToTextExtent(ig_size: imgui.Vec2) GlkSize {
+        // TODO: margins
+        const scale = uiZeroCharSize(); // TODO: cache this?
+        const txt_size: imgui.Vec2 = .{
+            .x = ig_size.x / scale.x,
+            .y = ig_size.y / scale.y,
+        };
+        return .{
+            .w = @intFromFloat(@floor(txt_size.x)),
+            .h = @intFromFloat(@floor(txt_size.y)),
+        };
+    }
+    fn uiTextExtentToSize(txt_size: GlkSize) imgui.Vec2 {
+        // TODO: margins
+        const scale = uiZeroCharSize(); // TODO: cache this?
+        return .{
+            .x = scale.x * @as(f32, @floatFromInt(txt_size.w)),
+            .y = scale.y * @as(f32, @floatFromInt(txt_size.h)),
+        };
+    }
+
+    fn uiZeroCharSize() imgui.Vec2 {
+        const font = imgui.getFont();
+        return font.calcTextSize(
+            font.ptr.FontSize,
+            std.math.floatMax(f32),
+            0.0,
+            "0",
+            null,
+        );
+    }
+
     // -- Blank
 
     fn noopClear(
@@ -335,7 +372,8 @@ pub const WindowData = struct {
     fn noopDraw(
         self: *@This(),
     ) WindowData.Error!void {
-        self.cached_size = imgui.getContentRegionAvail();
+        self.cached_ui_size = imgui.getContentRegionAvail();
+        self.cached_glk_size = .{ .w = 0, .h = 0 };
     }
 
     // -- Text buffer
@@ -381,7 +419,8 @@ pub const WindowData = struct {
     ) WindowData.Error!void {
         assert(self.w == .text_buffer);
 
-        self.cached_size = imgui.getContentRegionAvail();
+        self.cached_ui_size = imgui.getContentRegionAvail();
+        self.cached_glk_size = uiSizeToTextExtent(self.cached_ui_size);
 
         const text = self.w.text_buffer.items;
         if (text.len > 0) imgui.textWrapped(text);
@@ -394,7 +433,8 @@ pub const WindowData = struct {
     ) WindowData.Error!void {
         assert(self.w == .pair);
 
-        self.cached_size = imgui.getContentRegionAvail();
+        self.cached_ui_size = imgui.getContentRegionAvail();
+        self.cached_glk_size = .{ .w = 0, .h = 0 };
 
         const p = &self.w.pair;
 
@@ -410,22 +450,51 @@ pub const WindowData = struct {
         };
 
         // TODO: implement actual logic, for now it just splits it down the middle
-        const child_order: [2]*WindowData = switch (p.method.direction) {
+        const child: [2]*WindowData = switch (p.method.direction) {
             .left, .above => .{ p.first, p.second },
             .right, .below => .{ p.second, p.first },
         };
 
-        const child_region: imgui.Vec2 = switch (p.method.direction) {
-            .left, .right => .{ .x = (self.cached_size.x / 2) - border_compensation, .y = self.cached_size.y },
-            .above, .below => .{ .x = self.cached_size.x, .y = (self.cached_size.y / 2) - border_compensation },
+        const child_region: [2]imgui.Vec2 = switch (p.method.division) {
+            .proportional => blk: {
+                const ratio: [2]f32 = blk_ratio: {
+                    const primary_ratio = @as(f32, @floatFromInt(p.size)) / 100.0;
+                    break :blk_ratio switch (p.method.direction) {
+                        .left, .above => .{ primary_ratio, 1 - primary_ratio },
+                        .right, .below => .{ 1 - primary_ratio, primary_ratio },
+                    };
+                };
+
+                var region: [2]imgui.Vec2 = undefined;
+                switch (p.method.direction) {
+                    .left, .right => {
+                        inline for (&region, ratio) |*reg, rat| {
+                            reg.* = .{
+                                .x = self.cached_ui_size.x * rat - border_compensation,
+                                .y = self.cached_ui_size.y,
+                            };
+                        }
+                    },
+                    .above, .below => {
+                        inline for (&region, ratio) |*reg, rat| {
+                            reg.* = .{
+                                .x = self.cached_ui_size.x,
+                                .y = self.cached_ui_size.y * rat - border_compensation,
+                            };
+                        }
+                    },
+                }
+                break :blk region;
+            },
+            .fixed => unreachable,
         };
 
-        try child_order[0].draw(child_region, with_border);
+        try child[0].draw(child_region[0], with_border);
         switch (p.method.direction) {
             .left, .right => imgui.sameLine(0.0, -1.0),
             else => {},
         }
-        try child_order[1].draw(child_region, with_border);
+        try child[1].draw(child_region[1], with_border);
     }
 };
 
@@ -468,6 +537,8 @@ fn openWindow(
     if ((split == null or method == null) and root != null) return Error.InvalidArgument;
     if (kind == .pair) return Error.InvalidArgument;
 
+    const data_allocator = std.heap.c_allocator;
+
     const win = try pool.alloc();
     errdefer pool.dealloc(win);
 
@@ -475,7 +546,7 @@ fn openWindow(
         .rock = rock,
         .str = undefined,
         .data = WindowData.init(
-            pool.arena.child_allocator,
+            data_allocator,
             // Parent will be properly set when initialising the parent window.
             // At the moment setting it null doesn't affect anything regarding
             // the deinitialisation of window in case of error.
@@ -502,7 +573,7 @@ fn openWindow(
             .rock = 0,
             .str = undefined, // TODO: make the stream nullable (pair windows should never have a stream)
             .data = WindowData.initPair(
-                pool.arena.child_allocator,
+                data_allocator,
                 split.?.data.parent,
                 &win.data,
                 method.?,
@@ -624,10 +695,10 @@ pub export fn glk_window_get_size(
 ) void {
     assert(win != null);
 
-    _ = heightptr;
-    _ = widthptr;
-
-    // TODO: stub
+    const w = win.?;
+    const size = w.data.cached_glk_size;
+    if (widthptr) |wp| wp.* = size.w;
+    if (heightptr) |hp| hp.* = size.h;
 }
 
 pub export fn glk_window_set_echo_stream(

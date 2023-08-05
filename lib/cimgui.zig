@@ -114,6 +114,24 @@ pub const IO = struct {
     }
 };
 
+pub const Font = struct {
+    // --- Fields ---
+    ptr: *c.ImFont,
+
+    // --- Public functions ---
+
+    pub inline fn calcTextSize(self: @This(), size: f32, max_width: f32, wrap_width: f32, txt: []const u8, remaining: ?*[]const u8) Vec2 {
+        var out: Vec2 = undefined;
+        var remaining_ptr: [*c]const u8 = undefined;
+        c.ImFont_CalcTextSizeA(&out, self.ptr, size, max_width, wrap_width, txt.ptr, txt.ptr + txt.len, &remaining_ptr);
+        if (remaining) |r| {
+            const bytes_processed = @intFromPtr(remaining_ptr) - @intFromPtr(txt.ptr);
+            r.* = txt[bytes_processed..];
+        }
+        return out;
+    }
+};
+
 // --- Namespaces ---
 
 pub const glfw = struct {
@@ -210,6 +228,10 @@ pub inline fn getIO() IO {
 
 pub inline fn getStyle() *c.ImGuiStyle {
     return c.igGetStyle();
+}
+
+pub inline fn getFont() Font {
+    return .{ .ptr = c.igGetFont() };
 }
 
 pub inline fn newFrame() void {
