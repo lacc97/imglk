@@ -455,38 +455,50 @@ pub const WindowData = struct {
             .right, .below => .{ p.second, p.first },
         };
 
-        const child_region: [2]imgui.Vec2 = switch (p.method.division) {
-            .proportional => blk: {
-                const ratio: [2]f32 = blk_ratio: {
-                    const primary_ratio = @as(f32, @floatFromInt(p.size)) / 100.0;
-                    break :blk_ratio switch (p.method.direction) {
-                        .left, .above => .{ primary_ratio, 1 - primary_ratio },
-                        .right, .below => .{ 1 - primary_ratio, primary_ratio },
-                    };
-                };
+        // TODO: pull this into separate functions?
+        const child_region: [2]imgui.Vec2 = blk: {
+            var region: [2]imgui.Vec2 = undefined;
+            switch (p.method.division) {
+                .proportional => {
+                    // The fraction as given by the single size parameter value.
+                    const primary_frac = @as(f32, @floatFromInt(p.size)) / 100.0;
 
-                var region: [2]imgui.Vec2 = undefined;
-                switch (p.method.direction) {
-                    .left, .right => {
-                        inline for (&region, ratio) |*reg, rat| {
-                            reg.* = .{
-                                .x = self.cached_ui_size.x * rat - border_compensation,
-                                .y = self.cached_ui_size.y,
-                            };
+                    // The fraction of the total available region along the primary direction per child.
+                    const primary_dir_frac: [2]f32 = switch (p.method.direction) {
+                        .left, .above => .{ primary_frac, 1 - primary_frac },
+                        .right, .below => .{ 1 - primary_frac, primary_frac },
+                    };
+
+                    // The scaling factor for each coordinate for each child.
+                    const factor: [2]imgui.Vec2 = blk_factor: {
+                        var factor: [2]imgui.Vec2 = undefined;
+                        switch (p.method.direction) {
+                            .left, .right => for (&factor, primary_dir_frac) |*f, dir_frac| {
+                                f.* = .{ .x = dir_frac, .y = 1 };
+                            },
+                            .above, .below => for (&factor, primary_dir_frac) |*f, dir_frac| {
+                                f.* = .{ .x = 1, .y = dir_frac };
+                            },
                         }
-                    },
-                    .above, .below => {
-                        inline for (&region, ratio) |*reg, rat| {
-                            reg.* = .{
-                                .x = self.cached_ui_size.x,
-                                .y = self.cached_ui_size.y * rat - border_compensation,
-                            };
-                        }
-                    },
-                }
-                break :blk region;
-            },
-            .fixed => unreachable,
+                        break :blk_factor factor;
+                    };
+
+                    // The per-coordinate border compensation to be subtracted.
+                    const compensation: imgui.Vec2 = switch (p.method.direction) {
+                        .left, .right => .{ .x = border_compensation, .y = 0 },
+                        .above, .below => .{ .x = 0, .y = border_compensation },
+                    };
+
+                    for (&region, factor) |*reg, f| {
+                        reg.* = .{
+                            .x = self.cached_ui_size.x * f.x - compensation.x,
+                            .y = self.cached_ui_size.y * f.y - compensation.y,
+                        };
+                    }
+                },
+                .fixed => {},
+            }
+            break :blk region;
         };
 
         try child[0].draw(child_region[0], with_border);
