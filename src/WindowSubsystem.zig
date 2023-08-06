@@ -288,6 +288,14 @@ pub const WindowData = struct {
         return self.vtable.put_text(self, codepoints);
     }
 
+    pub fn moveCursor(
+        self: *@This(),
+        x: u32,
+        y: u32,
+    ) WindowData.Error!void {
+        return self.vtable.move_cursor(self, x, y);
+    }
+
     pub fn draw(
         self: *@This(),
         avail_region: imgui.Vec2,
@@ -946,8 +954,8 @@ pub export fn glk_window_move_cursor(
 ) void {
     assert(win != null);
 
-    _ = ypos;
-    _ = xpos;
+    const w = win.?;
+    w.data.moveCursor(xpos, ypos) catch {};
 }
 
 pub export fn glk_request_line_event(
