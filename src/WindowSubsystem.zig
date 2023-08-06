@@ -338,23 +338,41 @@ pub const WindowData = struct {
     // --- Private functions ---
 
     fn uiSizeToTextExtent(ig_size: imgui.Vec2) GlkSize {
-        // TODO: margins
-        const scale = uiZeroCharSize(); // TODO: cache this?
+        // w = zx*n + sx*(n-1)
+        //  => n = (w + sx)/(zx + sx)
+
+        const spacing = blk: {
+            var item_spacing = imgui.getStyle().ItemSpacing;
+            item_spacing.x = 0;
+            break :blk item_spacing;
+        };
+        const zero = uiZeroCharSize(); // TODO: cache this?
         const txt_size: imgui.Vec2 = .{
-            .x = ig_size.x / scale.x,
-            .y = ig_size.y / scale.y,
+            .x = (ig_size.x + spacing.x) / (zero.x + spacing.x),
+            .y = (ig_size.y + spacing.y) / (zero.y + spacing.y),
         };
         return .{
             .w = @intFromFloat(@floor(txt_size.x)),
             .h = @intFromFloat(@floor(txt_size.y)),
         };
     }
-    fn uiTextExtentToSize(txt_size: GlkSize) imgui.Vec2 {
-        // TODO: margins
-        const scale = uiZeroCharSize(); // TODO: cache this?
+
+    fn uiTextExtentToSize(size: GlkSize) imgui.Vec2 {
+        // w = zx*n + sx*(n-1)
+        //  => w = (zx + sx)*n - sx
+        const spacing = blk: {
+            var item_spacing = imgui.getStyle().ItemSpacing;
+            item_spacing.x = 0;
+            break :blk item_spacing;
+        };
+        const zero = uiZeroCharSize(); // TODO: cache this?
+        const txt_size: imgui.Vec2 = .{
+            .x = @floatFromInt(size.w),
+            .y = @floatFromInt(size.h),
+        };
         return .{
-            .x = scale.x * @as(f32, @floatFromInt(txt_size.w)),
-            .y = scale.y * @as(f32, @floatFromInt(txt_size.h)),
+            .x = (zero.x + spacing.x) * txt_size.x - spacing.x,
+            .y = (zero.y + spacing.y) * txt_size.y - spacing.y,
         };
     }
 
@@ -650,14 +668,10 @@ pub const WindowData = struct {
                     // as given by the key window's type and size parameters.
                     const req_size: f32 = switch (p.key.?.w) {
                         .text_buffer, .text_grid => blk_txt: {
-                            const lines: f32 = @floatFromInt(p.size);
-
-                            const vertical_spacing = imgui.getStyle().ItemSpacing.y;
-                            const zero = uiZeroCharSize(); // TODO: cached?
-                            // TODO: margins
+                            const size = uiTextExtentToSize(.{ .w = p.size, .h = p.size });
                             break :blk_txt switch (p.method.direction) {
-                                .left, .right => lines * zero.x,
-                                .above, .below => lines * zero.y + (lines - 1) * vertical_spacing,
+                                .left, .right => size.x,
+                                .above, .below => size.y,
                             };
                         },
                         .graphics => @floatFromInt(p.size),
