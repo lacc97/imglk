@@ -35,6 +35,8 @@ var window_styles: std.EnumArray(WindowKind, std.EnumArray(Style, StyleDescripto
     break :blk ws;
 };
 
+var main_arena: std.heap.ArenaAllocator = undefined;
+
 // --- Public functions ---
 
 pub fn initSubsystem(alloc: std.mem.Allocator) !void {
@@ -77,9 +79,12 @@ pub fn initSubsystem(alloc: std.mem.Allocator) !void {
     errdefer imgui.opengl3.deinit();
 
     pool = ObjectPool(Window).init(alloc);
+
+    main_arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
 }
 
 pub fn deinitSubsystem() void {
+    main_arena.deinit();
     pool.deinit();
     imgui.opengl3.deinit();
     imgui.glfw.deinit();
@@ -158,18 +163,26 @@ pub const WindowData = struct {
         graphics: void,
         pair: PairWindow,
         text_buffer: std.ArrayListUnmanaged(u8),
-        text_grid: void,
+        text_grid: struct {
+            cursor: struct { x: u32, y: u32 } = .{ .x = 0, .y = 0 },
+            grid: std.ArrayListUnmanaged(u32) = .{},
+        },
     },
 
     // --- Globals ---
 
+    const pair_vtable: VTable = .{
+        .draw = pDraw,
+    };
     const text_buffer_vtable: VTable = .{
         .clear = tbClear,
         .put_text = tbPutText,
         .draw = tbDraw,
     };
-    const pair_vtable: VTable = .{
-        .draw = pDraw,
+    const text_grid_vtable: VTable = .{
+        .clear = tgClear,
+        .put_text = tgPutText,
+        .draw = tgDraw,
     };
 
     // --- Public types ---
@@ -193,7 +206,8 @@ pub const WindowData = struct {
             .allocator = allocator,
             .vtable = switch (kind) {
                 .text_buffer => text_buffer_vtable,
-                .blank, .graphics, .text_grid => .{},
+                .text_grid => text_grid_vtable,
+                .blank, .graphics => .{},
                 .pair => unreachable,
             },
             .parent = parent,
@@ -204,7 +218,7 @@ pub const WindowData = struct {
                 .blank => .{ .blank = {} },
                 .graphics => .{ .graphics = {} },
                 .pair => unreachable,
-                .text_grid => .{ .text_grid = {} },
+                .text_grid => .{ .text_grid = .{} },
             },
         };
     }
@@ -374,6 +388,115 @@ pub const WindowData = struct {
     ) WindowData.Error!void {
         self.cached_ui_size = imgui.getContentRegionAvail();
         self.cached_glk_size = .{ .w = 0, .h = 0 };
+    }
+
+    // -- Text grid
+
+    fn tgIndex(size: GlkSize, x: u32, y: u32) u32 {
+        return size.w * y + x;
+    }
+
+    fn tgClear(
+        self: *@This(),
+    ) WindowData.Error!void {
+        assert(self.w == .text_grid);
+
+        const tg = &self.w.text_grid;
+        tg.cursor = .{ .x = 0, .y = 0 };
+        @memset(tg.grid.items, ' ');
+    }
+
+    fn tgPutText(
+        self: *@This(),
+        codepoints: []const u32,
+    ) WindowData.Error!void {
+        assert(self.w == .text_grid);
+
+        const tg = &self.w.text_grid;
+        const tg_size = self.cached_glk_size;
+
+        if (tg_size.w == 0 or tg_size.h == 0) return;
+
+        assert(tg_size.w * tg_size.h == tg.grid.items.len);
+        for (codepoints) |cp| {
+            if (tg.cursor.x >= tg_size.w) {
+                tg.cursor.x = 0;
+                tg.cursor.y += 1;
+            }
+            if (tg.cursor.y >= tg_size.h) break;
+            if (cp == '\n') {
+                tg.cursor.x = 0;
+                tg.cursor.y += 1;
+                continue;
+            }
+
+            tg.grid.items[tgIndex(self.cached_glk_size, tg.cursor.x, tg.cursor.y)] = cp;
+
+            tg.cursor.x += 1;
+        }
+    }
+
+    fn tgDraw(
+        self: *@This(),
+    ) WindowData.Error!void {
+        assert(self.w == .text_grid);
+
+        const tg = &self.w.text_grid;
+
+        self.cached_ui_size = imgui.getContentRegionAvail();
+        const tg_size = uiSizeToTextExtent(self.cached_ui_size);
+
+        if (!std.meta.eql(tg_size, self.cached_glk_size)) {
+            // We have resized.
+
+            if (tg_size.w == 0 or tg_size.h == 0) {
+                tg.grid.clearRetainingCapacity();
+                return;
+            }
+
+            const tmp = try main_arena.allocator().alloc(u32, tg_size.w * tg_size.h);
+            @memset(tmp, ' ');
+
+            for (0..@min(tg_size.h, self.cached_glk_size.h)) |y| {
+                for (0..@min(tg_size.w, self.cached_glk_size.w)) |x| {
+                    const src_index = tgIndex(
+                        self.cached_glk_size,
+                        @intCast(x),
+                        @intCast(y),
+                    );
+                    const dst_index = tgIndex(
+                        tg_size,
+                        @intCast(x),
+                        @intCast(y),
+                    );
+                    tmp[dst_index] = tg.grid.items[src_index];
+                }
+            }
+
+            try tg.grid.resize(std.heap.c_allocator, tmp.len);
+            @memcpy(tg.grid.items, tmp);
+
+            self.cached_glk_size = tg_size;
+        }
+
+        // Each codepoint maps to at most 4 bytes, so this won't overflow the buffer size. We add
+        // height to the length so we can put newlines in there.
+        const txt = try main_arena.allocator().alloc(u8, 4 * (tg.grid.items.len + tg_size.h));
+        var i: usize = 0;
+        for (0..tg_size.h) |y| {
+            for (tg.grid.items[(y * tg_size.w)..][0..tg_size.w]) |cp| {
+                var utf8: [4]u8 = undefined;
+                const utf8_len = unicode.codepoint.utf8Encode(cp, &utf8) catch err: {
+                    utf8[0] = '?';
+                    break :err 1;
+                };
+                @memcpy(txt[i..][0..utf8_len], utf8[0..utf8_len]);
+                i += utf8_len;
+            }
+            txt[i] = '\n';
+            i += 1;
+        }
+        imgui.text(txt[0..i]);
     }
 
     // -- Text buffer
@@ -668,7 +791,18 @@ fn closeWindow(
     pool.dealloc(win);
 }
 
+fn resetMainArena() void {
+    if (!main_arena.reset(.{ .retain_capacity = {} })) {
+        // Always succeeds.
+        _ = main_arena.reset(.{ .free_all = {} });
+    }
+}
+
 fn drawUi() !void {
+    // Reset the arena at the start and end of the function.
+    resetMainArena();
+    defer resetMainArena();
+
     imgui.setNextWindowPos(.{ .x = 0, .y = 0 }, .always);
     imgui.setNextWindowSize(imgui.getIO().ptr.DisplaySize, .always);
     _ = imgui.begin("root", null, .{
