@@ -182,6 +182,7 @@ pub const WindowData = struct {
     const text_grid_vtable: VTable = .{
         .clear = tgClear,
         .put_text = tgPutText,
+        .move_cursor = tgMoveCursor,
         .draw = tgDraw,
     };
 
@@ -311,6 +312,7 @@ pub const WindowData = struct {
         clear: *const fn (self: *WindowData) WindowData.Error!void = noopClear,
         set_style: *const fn (self: *WindowData, style: Style) WindowData.Error!void = noopSetStyle,
         put_text: *const fn (self: *WindowData, codepoints: []const u32) WindowData.Error!void = noopPutText,
+        move_cursor: *const fn (self: *WindowData, x: u32, y: u32) WindowData.Error!void = noopMoveCursor,
 
         draw: *const fn (self: *WindowData) WindowData.Error!void = noopDraw,
     };
@@ -383,6 +385,16 @@ pub const WindowData = struct {
         _ = self;
     }
 
+    fn noopMoveCursor(
+        self: *@This(),
+        x: u32,
+        y: u32,
+    ) WindowData.Error!void {
+        _ = y;
+        _ = x;
+        _ = self;
+    }
+
     fn noopDraw(
         self: *@This(),
     ) WindowData.Error!void {
@@ -434,6 +446,16 @@ pub const WindowData = struct {
 
             tg.cursor.x += 1;
         }
+    }
+
+    fn tgMoveCursor(
+        self: *@This(),
+        x: u32,
+        y: u32,
+    ) WindowData.Error!void {
+        assert(self.w == .text_grid);
+
+        self.w.text_grid.cursor = .{ .x = x, .y = y };
     }
 
     fn tgDraw(
