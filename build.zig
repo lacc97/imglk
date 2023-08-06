@@ -35,6 +35,7 @@ pub fn build(
     lib.addIncludePath(.{ .path = "src/c" });
     lib.addIncludePath(.{ .path = "lib/cimgui" });
     lib.addIncludePath(.{ .path = "lib/cimgui/generator/output" });
+    lib.addCSourceFiles(&.{ "src/c/gi_blorb.c", "src/c/gi_debug.c", "src/c/gi_dispa.c" }, &.{});
     lib.linkLibrary(cimgui_lib);
     lib.addModule("cimgui", cimgui_module);
     linkGlfw(b, lib);
