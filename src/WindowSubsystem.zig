@@ -439,13 +439,13 @@ pub const WindowData = struct {
         const p = &self.w.pair;
 
         const with_border: bool = p.method.border == .border;
-        const border_compensation: f32 = blk: {
-            if (!with_border) break :blk 0;
+        const border_compensation: imgui.Vec2 = blk: {
+            if (!with_border) break :blk .{ .x = 0, .y = 0 };
 
             const style = imgui.getStyle();
             break :blk switch (p.method.direction) {
-                .left, .right => style.ItemSpacing.x / 2,
-                .above, .below => style.ItemSpacing.y / 2,
+                .left, .right => .{ .x = style.ItemSpacing.x / 2, .y = 0 },
+                .above, .below => .{ .x = 0, .y = style.ItemSpacing.y / 2 },
             };
         };
 
@@ -483,16 +483,10 @@ pub const WindowData = struct {
                         break :blk_factor factor;
                     };
 
-                    // The per-coordinate border compensation to be subtracted.
-                    const compensation: imgui.Vec2 = switch (p.method.direction) {
-                        .left, .right => .{ .x = border_compensation, .y = 0 },
-                        .above, .below => .{ .x = 0, .y = border_compensation },
-                    };
-
                     for (&region, factor) |*reg, f| {
                         reg.* = .{
-                            .x = self.cached_ui_size.x * f.x - compensation.x,
-                            .y = self.cached_ui_size.y * f.y - compensation.y,
+                            .x = self.cached_ui_size.x * f.x - border_compensation.x,
+                            .y = self.cached_ui_size.y * f.y - border_compensation.y,
                         };
                     }
                 },
@@ -525,31 +519,25 @@ pub const WindowData = struct {
                         .above, .below => @min(self.cached_ui_size.y, req_size),
                     };
 
-                    // The per-coordinate border compensation to be subtracted.
-                    const compensation: imgui.Vec2 = switch (p.method.direction) {
-                        .left, .right => .{ .x = border_compensation, .y = 0 },
-                        .above, .below => .{ .x = 0, .y = border_compensation },
-                    };
-
                     switch (p.method.direction) {
                         .left, .right => {
                             region[0] = .{
-                                .x = actual_size - compensation.x,
-                                .y = self.cached_ui_size.y - compensation.y,
+                                .x = actual_size - border_compensation.x,
+                                .y = self.cached_ui_size.y - border_compensation.y,
                             };
                             region[1] = .{
-                                .x = self.cached_ui_size.x - actual_size - compensation.x,
-                                .y = self.cached_ui_size.y - compensation.y,
+                                .x = self.cached_ui_size.x - actual_size - border_compensation.x,
+                                .y = self.cached_ui_size.y - border_compensation.y,
                             };
                         },
                         .above, .below => {
                             region[0] = .{
-                                .x = self.cached_ui_size.x - compensation.x,
-                                .y = actual_size - compensation.y,
+                                .x = self.cached_ui_size.x - border_compensation.x,
+                                .y = actual_size - border_compensation.y,
                             };
                             region[1] = .{
-                                .x = self.cached_ui_size.x - compensation.x,
-                                .y = self.cached_ui_size.y - actual_size - compensation.y,
+                                .x = self.cached_ui_size.x - border_compensation.x,
+                                .y = self.cached_ui_size.y - actual_size - border_compensation.y,
                             };
                         },
                     }
