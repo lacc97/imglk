@@ -496,7 +496,64 @@ pub const WindowData = struct {
                         };
                     }
                 },
-                .fixed => {},
+                .fixed => {
+                    if (p.key == null) break :blk .{ .{ .x = 0, .y = 0 }, self.cached_ui_size };
+
+                    // The required size along the primary direction,
+                    // as given by the key window's type and size parameters.
+                    const req_size: f32 = switch (p.key.?.w) {
+                        .text_buffer, .text_grid => blk_txt: {
+                            const zero = uiZeroCharSize(); // TODO: cached?
+                            // TODO: margins
+                            break :blk_txt switch (p.method.direction) {
+                                .left, .right => @as(f32, @floatFromInt(p.size)) * zero.x,
+                                .above, .below => @as(f32, @floatFromInt(p.size)) * zero.y,
+                            };
+                        },
+                        .graphics => @floatFromInt(p.size),
+                        else => {
+                            glk_log.warn("using {} window as key window", .{p.key.?.w});
+
+                            // Because of invalid key window, we make it behave
+                            // as if it was a zero size window.
+                            break :blk .{ .{ .x = 0, .y = 0 }, self.cached_ui_size };
+                        },
+                    };
+
+                    const actual_size: f32 = switch (p.method.direction) {
+                        .left, .right => @min(self.cached_ui_size.x, req_size),
+                        .above, .below => @min(self.cached_ui_size.y, req_size),
+                    };
+
+                    // The per-coordinate border compensation to be subtracted.
+                    const compensation: imgui.Vec2 = switch (p.method.direction) {
+                        .left, .right => .{ .x = border_compensation, .y = 0 },
+                        .above, .below => .{ .x = 0, .y = border_compensation },
+                    };
+
+                    switch (p.method.direction) {
+                        .left, .right => {
+                            region[0] = .{
+                                .x = actual_size - compensation.x,
+                                .y = self.cached_ui_size.y - compensation.y,
+                            };
+                            region[1] = .{
+                                .x = self.cached_ui_size.x - actual_size - compensation.x,
+                                .y = self.cached_ui_size.y - compensation.y,
+                            };
+                        },
+                        .above, .below => {
+                            region[0] = .{
+                                .x = self.cached_ui_size.x - compensation.x,
+                                .y = actual_size - compensation.y,
+                            };
+                            region[1] = .{
+                                .x = self.cached_ui_size.x - compensation.x,
+                                .y = self.cached_ui_size.y - actual_size - compensation.y,
+                            };
+                        },
+                    }
+                },
             }
             break :blk region;
         };
