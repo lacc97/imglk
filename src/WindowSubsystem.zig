@@ -925,6 +925,15 @@ pub export fn glk_window_get_size(
     if (heightptr) |hp| hp.* = size.h;
 }
 
+pub export fn glk_window_get_stream(
+    win: winid_t,
+) strid_t {
+    assert(win != null);
+
+    const w = win.?;
+    return w.str;
+}
+
 pub export fn glk_window_set_echo_stream(
     win: winid_t,
     str: strid_t,
@@ -958,6 +967,24 @@ pub export fn glk_window_move_cursor(
     w.data.moveCursor(xpos, ypos) catch {};
 }
 
+pub export fn glk_request_char_event(
+    win: winid_t,
+) void {
+    _ = win;
+}
+
+pub export fn glk_request_char_event_uni(
+    win: winid_t,
+) void {
+    _ = win;
+}
+
+pub export fn glk_cancel_char_event(
+    win: winid_t,
+) void {
+    _ = win;
+}
+
 pub export fn glk_request_line_event(
     win: winid_t,
     buf: ?[*]u8,
@@ -986,6 +1013,14 @@ pub export fn glk_request_line_event_uni(
     // TODO: stub
 }
 
+pub export fn glk_cancel_line_event(
+    win: winid_t,
+    event: ?*event_t,
+) void {
+    _ = event;
+    _ = win;
+}
+
 // TODO: this should go in a separate file
 
 pub const event_t = extern struct {
@@ -994,6 +1029,12 @@ pub const event_t = extern struct {
     val1: u32,
     val2: u32,
 };
+
+pub export fn glk_request_timer_events(
+    millisecs: u32,
+) void {
+    _ = millisecs;
+}
 
 pub export fn glk_select(
     event: ?*event_t,

@@ -50,16 +50,23 @@ pub fn build(
     const run_main_tests = b.addRunArtifact(main_tests);
     params.test_step.dependOn(&run_main_tests.step);
 
-    const terp_model = b.addExecutable(.{
-        .name = "model-imglk",
-        .root_source_file = .{ .path = "terp/main.zig" },
-        .target = params.target,
-        .optimize = params.optimize,
-    });
-    terp_model.addIncludePath(.{ .path = "src/c" });
-    terp_model.addCSourceFiles(&.{"terp/model.c"}, &.{});
-    terp_model.linkLibrary(lib);
-    b.installArtifact(terp_model);
+    const terp_model = build_terp(
+        b,
+        params,
+        lib,
+        "model",
+        &.{"terp/model.c"},
+    );
+    _ = terp_model;
+
+    const terp_multiwin = build_terp(
+        b,
+        params,
+        lib,
+        "multiwin",
+        &.{"terp/multiwin.c"},
+    );
+    _ = terp_multiwin;
 }
 
 fn build_cimgui(
@@ -94,6 +101,26 @@ fn build_cimgui(
     lib.linkLibCpp();
 
     return lib;
+}
+
+fn build_terp(
+    b: *std.Build,
+    params: BuildParams,
+    lib: *std.Build.Step.Compile,
+    comptime name: []const u8,
+    source_files: []const []const u8,
+) *std.Build.Step.Compile {
+    const terp = b.addExecutable(.{
+        .name = name ++ "-imglk",
+        .root_source_file = .{ .path = "terp/main.zig" },
+        .target = params.target,
+        .optimize = params.optimize,
+    });
+    terp.addIncludePath(.{ .path = "src/c" });
+    terp.addCSourceFiles(source_files, &.{});
+    terp.linkLibrary(lib);
+    b.installArtifact(terp);
+    return terp;
 }
 
 // --- 3rd party linking ---
