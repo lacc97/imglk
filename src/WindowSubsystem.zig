@@ -1021,7 +1021,10 @@ pub export fn glk_select(
 
     main_window.swapBuffers();
 
-    e.type = 0;
+    e.type = core.c_glk.evtype_Arrange;
+    e.win = null;
+    e.val1 = 0;
+    e.val2 = 0;
 }
 
 extern fn glk_exit() void;
