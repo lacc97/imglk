@@ -491,17 +491,20 @@ pub const WindowData = struct {
                     }
                 },
                 .fixed => {
-                    if (p.key == null) break :blk .{ .{ .x = 0, .y = 0 }, self.cached_ui_size };
+                    if (p.key == null or p.size == 0) break :blk .{ .{ .x = 0, .y = 0 }, self.cached_ui_size };
 
                     // The required size along the primary direction,
                     // as given by the key window's type and size parameters.
                     const req_size: f32 = switch (p.key.?.w) {
                         .text_buffer, .text_grid => blk_txt: {
+                            const lines: f32 = @floatFromInt(p.size);
+
+                            const vertical_spacing = imgui.getStyle().ItemSpacing.y;
                             const zero = uiZeroCharSize(); // TODO: cached?
                             // TODO: margins
                             break :blk_txt switch (p.method.direction) {
-                                .left, .right => @as(f32, @floatFromInt(p.size)) * zero.x,
-                                .above, .below => @as(f32, @floatFromInt(p.size)) * zero.y,
+                                .left, .right => lines * zero.x,
+                                .above, .below => lines * zero.y + (lines - 1) * vertical_spacing,
                             };
                         },
                         .graphics => @floatFromInt(p.size),
