@@ -344,6 +344,7 @@ pub const WindowData = struct {
         const spacing = blk: {
             var item_spacing = imgui.getStyle().ItemSpacing;
             item_spacing.x = 0;
+            item_spacing.y /= 2;
             break :blk item_spacing;
         };
         const zero = uiZeroCharSize(); // TODO: cache this?
@@ -351,18 +352,21 @@ pub const WindowData = struct {
             .x = (ig_size.x + spacing.x) / (zero.x + spacing.x),
             .y = (ig_size.y + spacing.y) / (zero.y + spacing.y),
         };
-        return .{
+        const result: GlkSize = .{
             .w = @intFromFloat(@floor(txt_size.x)),
             .h = @intFromFloat(@floor(txt_size.y)),
         };
+        return result;
     }
 
     fn uiTextExtentToSize(size: GlkSize) imgui.Vec2 {
         // w = zx*n + sx*(n-1)
         //  => w = (zx + sx)*n - sx
+
         const spacing = blk: {
             var item_spacing = imgui.getStyle().ItemSpacing;
             item_spacing.x = 0;
+            item_spacing.y /= 2;
             break :blk item_spacing;
         };
         const zero = uiZeroCharSize(); // TODO: cache this?
@@ -370,10 +374,11 @@ pub const WindowData = struct {
             .x = @floatFromInt(size.w),
             .y = @floatFromInt(size.h),
         };
-        return .{
+        const result: imgui.Vec2 = .{
             .x = (zero.x + spacing.x) * txt_size.x - spacing.x,
             .y = (zero.y + spacing.y) * txt_size.y - spacing.y,
         };
+        return result;
     }
 
     fn uiZeroCharSize() imgui.Vec2 {
@@ -610,9 +615,7 @@ pub const WindowData = struct {
         const p = &self.w.pair;
 
         const with_border: bool = p.method.border == .border;
-        const border_compensation: imgui.Vec2 = blk: {
-            if (!with_border) break :blk .{ .x = 0, .y = 0 };
-
+        const spacing: imgui.Vec2 = blk: {
             const style = imgui.getStyle();
             break :blk switch (p.method.direction) {
                 .left, .right => .{ .x = style.ItemSpacing.x / 2, .y = 0 },
@@ -627,7 +630,7 @@ pub const WindowData = struct {
         };
 
         // TODO: pull this into separate functions?
-        const child_region: [2]imgui.Vec2 = blk: {
+        const child_region: [2]imgui.Vec2 = calc_regions: {
             var region: [2]imgui.Vec2 = undefined;
             switch (p.method.division) {
                 .proportional => {
@@ -656,32 +659,45 @@ pub const WindowData = struct {
 
                     for (&region, factor) |*reg, f| {
                         reg.* = .{
-                            .x = self.cached_ui_size.x * f.x - border_compensation.x,
-                            .y = self.cached_ui_size.y * f.y - border_compensation.y,
+                            .x = self.cached_ui_size.x * f.x - spacing.x,
+                            .y = self.cached_ui_size.y * f.y - spacing.y,
                         };
                     }
                 },
                 .fixed => {
-                    if (p.key == null or p.size == 0) break :blk .{ .{ .x = 0, .y = 0 }, self.cached_ui_size };
+                    if (p.key == null or p.size == 0) break :calc_regions .{ .{ .x = 0, .y = 0 }, self.cached_ui_size };
+
+                    // The padding within a window (half the difference between
+                    // window size and window content size).
+                    const inner_padding: imgui.Vec2 = blk: {
+                        if (!with_border) break :blk .{ .x = 0, .y = 0 };
+
+                        const style = imgui.getStyle();
+                        break :blk switch (p.method.direction) {
+                            .left, .right => .{ .x = style.WindowPadding.x, .y = 0 },
+                            .above, .below => .{ .x = 0, .y = style.WindowPadding.y },
+                        };
+                    };
 
                     // The required size along the primary direction,
                     // as given by the key window's type and size parameters.
-                    const req_size: f32 = switch (p.key.?.w) {
-                        .text_buffer, .text_grid => blk_txt: {
-                            const size = uiTextExtentToSize(.{ .w = p.size, .h = p.size });
-                            break :blk_txt switch (p.method.direction) {
-                                .left, .right => size.x,
-                                .above, .below => size.y,
-                            };
-                        },
-                        .graphics => @floatFromInt(p.size),
-                        else => {
-                            glk_log.warn("using {} window as key window", .{p.key.?.w});
+                    const req_size: f32 = blk_req_size: {
+                        const size: imgui.Vec2 =
+                            switch (p.key.?.w) {
+                            .text_buffer, .text_grid => uiTextExtentToSize(.{ .w = p.size, .h = p.size }),
+                            .graphics => .{ .x = @floatFromInt(p.size), .y = @floatFromInt(p.size) },
+                            else => {
+                                glk_log.warn("using {} window as key window", .{p.key.?.w});
 
-                            // Because of invalid key window, we make it behave
-                            // as if it was a zero size window.
-                            break :blk .{ .{ .x = 0, .y = 0 }, self.cached_ui_size };
-                        },
+                                // Because of invalid key window, we make it behave
+                                // as if it was a zero size window.
+                                break :calc_regions .{ .{ .x = 0, .y = 0 }, self.cached_ui_size };
+                            },
+                        };
+                        break :blk_req_size switch (p.method.direction) {
+                            .left, .right => size.x + 2 * inner_padding.x,
+                            .above, .below => size.y + 2 * inner_padding.y,
+                        };
                     };
 
                     const actual_size: f32 = switch (p.method.direction) {
@@ -692,28 +708,36 @@ pub const WindowData = struct {
                     switch (p.method.direction) {
                         .left, .right => {
                             region[0] = .{
-                                .x = actual_size - border_compensation.x,
-                                .y = self.cached_ui_size.y - border_compensation.y,
+                                .x = actual_size,
+                                .y = self.cached_ui_size.y - spacing.y,
                             };
                             region[1] = .{
-                                .x = self.cached_ui_size.x - actual_size - border_compensation.x,
-                                .y = self.cached_ui_size.y - border_compensation.y,
+                                .x = self.cached_ui_size.x - actual_size - 2 * spacing.x,
+                                .y = self.cached_ui_size.y - spacing.y,
                             };
                         },
                         .above, .below => {
                             region[0] = .{
-                                .x = self.cached_ui_size.x - border_compensation.x,
-                                .y = actual_size - border_compensation.y,
+                                .x = self.cached_ui_size.x - spacing.x,
+                                .y = actual_size,
                             };
                             region[1] = .{
-                                .x = self.cached_ui_size.x - border_compensation.x,
-                                .y = self.cached_ui_size.y - actual_size - border_compensation.y,
+                                .x = self.cached_ui_size.x - spacing.x,
+                                .y = self.cached_ui_size.y - actual_size - 2 * spacing.y,
                             };
                         },
                     }
                 },
             }
-            break :blk region;
+            // switch (p.method.direction) {
+            //     .left, .right => {
+            //         for (&region) |*r| r.x -= imgui.getStyle().ItemSpacing.x / 2;
+            //     },
+            //     .above, .below => {
+            //         for (&region) |*r| r.y -= imgui.getStyle().ItemSpacing.y / 2;
+            //     },
+            // }
+            break :calc_regions region;
         };
 
         try child[0].draw(child_region[0], with_border);
