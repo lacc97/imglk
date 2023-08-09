@@ -337,6 +337,10 @@ pub const WindowData = struct {
 
     // --- Private functions ---
 
+    fn uiClampPositive(v: imgui.Vec2) imgui.Vec2 {
+        return .{ .x = @max(v.x, 0.0), .y = @max(v.y, 0.0) };
+    }
+
     fn uiSizeToTextExtent(ig_size: imgui.Vec2) GlkSize {
         // w = zx*n + sx*(n-1)
         //  => n = (w + sx)/(zx + sx)
@@ -429,7 +433,7 @@ pub const WindowData = struct {
     fn noopDraw(
         self: *@This(),
     ) WindowData.Error!void {
-        self.cached_ui_size = imgui.getContentRegionAvail();
+        self.cached_ui_size = uiClampPositive(imgui.getContentRegionAvail());
         self.cached_glk_size = .{ .w = 0, .h = 0 };
     }
 
@@ -496,7 +500,7 @@ pub const WindowData = struct {
 
         const tg = &self.w.text_grid;
 
-        self.cached_ui_size = imgui.getContentRegionAvail();
+        self.cached_ui_size = uiClampPositive(imgui.getContentRegionAvail());
         const tg_size = uiSizeToTextExtent(self.cached_ui_size);
 
         if (!std.meta.eql(tg_size, self.cached_glk_size)) {
@@ -595,7 +599,7 @@ pub const WindowData = struct {
     ) WindowData.Error!void {
         assert(self.w == .text_buffer);
 
-        self.cached_ui_size = imgui.getContentRegionAvail();
+        self.cached_ui_size = uiClampPositive(imgui.getContentRegionAvail());
         self.cached_glk_size = uiSizeToTextExtent(self.cached_ui_size);
 
         const text = self.w.text_buffer.items;
@@ -609,7 +613,7 @@ pub const WindowData = struct {
     ) WindowData.Error!void {
         assert(self.w == .pair);
 
-        self.cached_ui_size = imgui.getContentRegionAvail();
+        self.cached_ui_size = uiClampPositive(imgui.getContentRegionAvail());
         self.cached_glk_size = .{ .w = 0, .h = 0 };
 
         const p = &self.w.pair;
@@ -729,23 +733,23 @@ pub const WindowData = struct {
                     }
                 },
             }
-            // switch (p.method.direction) {
-            //     .left, .right => {
-            //         for (&region) |*r| r.x -= imgui.getStyle().ItemSpacing.x / 2;
-            //     },
-            //     .above, .below => {
-            //         for (&region) |*r| r.y -= imgui.getStyle().ItemSpacing.y / 2;
-            //     },
-            // }
+            for (&region) |*r| {
+                const clamped = uiClampPositive(r.*);
+                r.* = clamped;
+            }
             break :calc_regions region;
         };
 
-        try child[0].draw(child_region[0], with_border);
-        switch (p.method.direction) {
-            .left, .right => imgui.sameLine(0.0, -1.0),
-            else => {},
+        if (child_region[0].x != 0 and child_region[0].y != 0) {
+            try child[0].draw(child_region[0], with_border);
+            switch (p.method.direction) {
+                .left, .right => imgui.sameLine(0.0, -1.0),
+                else => {},
+            }
         }
-        try child[1].draw(child_region[1], with_border);
+        if (child_region[1].x != 0 and child_region[1].y != 0) {
+            try child[1].draw(child_region[1], with_border);
+        }
     }
 };
 
