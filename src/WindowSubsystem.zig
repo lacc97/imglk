@@ -309,7 +309,7 @@ pub const WindowData = struct {
         _ = imgui.beginChild(
             name,
             avail_region,
-            with_border,
+            self.w != .pair and with_border,
             .{},
         );
         defer imgui.endChild();
