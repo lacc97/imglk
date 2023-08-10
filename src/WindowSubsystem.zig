@@ -861,8 +861,29 @@ fn openWindow(
             ),
         };
 
+        if (root != split) {
+            // Insert the new parent into the tree.
+
+            const split_parent_data = split.?.data.parent;
+            assert(split_parent_data != null);
+            assert(split_parent_data.?.w == .pair);
+
+            const split_parent = &split_parent_data.?.w.pair;
+            const split_parent_child = chld: {
+                if (split_parent.first == &split.?.data) {
+                    break :chld &split_parent.first;
+                } else if (split_parent.second == &split.?.data) {
+                    break :chld &split_parent.second;
+                } else {
+                    @panic("split is not a child of its parent");
+                }
+            };
+            split_parent_child.* = &w.data;
+        }
+
         // Here we properly initialise the window parent.
         win.data.parent = &w.data;
+        split.?.data.parent = &w.data;
 
         break :blk w;
     };
