@@ -566,6 +566,18 @@ pub export fn glk_stream_close(
     sys_stream.closeStream(s, result);
 }
 
+export fn glk_stream_get_position(str: strid_t) u32 {
+    _ = str;
+    @panic("stub");
+}
+
+export fn glk_stream_set_position(str: strid_t, pos: u32, seekmode: u32) void {
+    _ = seekmode;
+    _ = pos;
+    _ = str;
+    @panic("stub");
+}
+
 pub export fn glk_put_char_stream(
     str: strid_t,
     ch: u8,

@@ -2,9 +2,13 @@ const std = @import("std");
 
 pub const c_glk = @cImport({
     @cInclude("glk.h");
+    @cInclude("gi_blorb.h");
+    @cInclude("gi_dispa.h");
 });
 
 // --- Globals ---
+
+pub var blorb_resource_map: ?*giblorb_map_t = null;
 
 pub var interrupt_handler: ?GlkInterruptHandler = null;
 
@@ -53,6 +57,15 @@ const CharOutputResult = enum(u32) {
     approx_print = c_glk.gestalt_CharOutput_ApproxPrint,
     exact_print = c_glk.gestalt_CharOutput_ExactPrint,
 };
+
+// --- Private types ---
+
+// -- Blorb
+
+const giblorb_err_t = c_glk.giblorb_err_t;
+const giblorb_map_t = c_glk.giblorb_map_t;
+
+const strid_t = @import("StreamSubsystem.zig").strid_t;
 
 // --- Private functions ---
 
@@ -105,4 +118,18 @@ pub export fn glk_gestalt_ext(
         val,
         if (arr) |a| a[0..arrlen] else &.{},
     );
+}
+
+// -- Blorb
+
+export fn giblorb_set_resource_map(
+    file: strid_t,
+) giblorb_err_t {
+    const err = c_glk.giblorb_create_map(@ptrCast(file), &blorb_resource_map);
+    if (err != c_glk.giblorb_err_None) blorb_resource_map = null;
+    return err;
+}
+
+export fn giblorb_get_resource_map() ?*giblorb_map_t {
+    return blorb_resource_map;
 }
