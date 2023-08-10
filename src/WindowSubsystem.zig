@@ -711,6 +711,7 @@ pub const WindowData = struct {
                         .above, .below => @min(self.cached_ui_size.y, req_size),
                     };
 
+                    // Here region[0] corresponds to the child that contains the key window.
                     switch (p.method.direction) {
                         .left, .right => {
                             region[0] = .{
@@ -732,6 +733,13 @@ pub const WindowData = struct {
                                 .y = self.cached_ui_size.y - actual_size - 2 * spacing.y,
                             };
                         },
+                    }
+
+                    // Swap correct primary/secondary child region based on the
+                    // child drawing order.
+                    switch (p.method.direction) {
+                        .right, .below => std.mem.swap(imgui.Vec2, &region[0], &region[1]),
+                        else => {}, // already ordered
                     }
                 },
             }
