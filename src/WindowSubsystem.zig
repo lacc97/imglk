@@ -1,5 +1,7 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const assert = std.debug.assert;
+
 const core = @import("core.zig");
 
 const glfw = @import("glfw");
@@ -769,6 +771,27 @@ pub const Window = struct {
         stream_sys.closeWindowStream(self.str, result);
         self.data.deinit();
     }
+
+    pub fn format(
+        value: *const Window,
+        comptime fmt: []const u8,
+        _: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        if (fmt.len > 0) @compileError("unrecognized format string: " ++ fmt);
+
+        switch (value.data.w) {
+            .pair => |p| try std.fmt.format(writer, "{s} ({s} | {s}({s}, {d}) | {s})", .{
+                @tagName(value.data.w),
+                @tagName(p.method.direction),
+                @tagName(p.method.division),
+                if (p.key) |k| @tagName(k.w) else "none",
+                p.size,
+                @tagName(p.method.border),
+            }),
+            else => try std.fmt.format(writer, "{s}", .{@tagName(value.data.w)}),
+        }
+    }
 };
 
 // --- Private functions ---
@@ -886,6 +909,58 @@ fn drawUi() !void {
     if (root) |w| {
         try w.data.draw(imgui.getContentRegionAvail(), false);
     }
+}
+
+// -- Debugging
+
+comptime {
+    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
+        @export(getRootWindow, .{ .name = "imglk_getRootWindow", .linkage = .Strong });
+        @export(dumpWindowTree, .{ .name = "imglk_dumpWindowTree", .linkage = .Strong });
+    }
+}
+
+fn getRootWindow() callconv(.C) ?*Window {
+    return root;
+}
+
+fn dumpWindowTree(root_win: *Window) callconv(.C) void {
+    const dump = struct {
+        fn fun(buf: []u8, win: *Window, prefix: []const u8, is_left: bool) void {
+            assert(prefix.ptr == buf.ptr); // prefix must point to buf
+
+            std.debug.print("{s}{s} {}\n", .{ prefix, if (is_left) "├──" else "└──", win });
+
+            const children: [2]*Window = blk: {
+                // Non-pair windows are leaf nodes.
+                if (win.data.w != .pair) return;
+
+                const first_data = win.data.w.pair.first;
+                const second_data = win.data.w.pair.second;
+                break :blk .{
+                    @fieldParentPtr(Window, "data", first_data),
+                    @fieldParentPtr(Window, "data", second_data),
+                };
+            };
+
+            const new_prefix = blk: {
+                const additional = if (is_left) "│   " else "    ";
+                if (buf.len - prefix.len < additional.len) {
+                    // No more space. Print something to indicate this.
+                    std.debug.print("{s}└── <...>\n", .{prefix});
+                    return;
+                }
+                @memcpy(buf[prefix.len..][0..additional.len], additional);
+                break :blk buf[0..(prefix.len + additional.len)];
+            };
+
+            fun(buf, children[0], new_prefix, true);
+            fun(buf, children[1], new_prefix, false);
+        }
+    }.fun;
+
+    var buf: [2048]u8 = undefined;
+    dump(&buf, root_win, buf[0..0], false);
 }
 
 // -- Callbacks
