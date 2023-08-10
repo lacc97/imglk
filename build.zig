@@ -67,6 +67,9 @@ pub fn build(
         &.{"terp/multiwin.c"},
     );
     _ = terp_multiwin;
+
+    const terp_git = build_git(b, params, lib);
+    _ = terp_git;
 }
 
 fn build_cimgui(
@@ -103,6 +106,56 @@ fn build_cimgui(
     return lib;
 }
 
+fn build_git(
+    b: *std.Build,
+    params: BuildParams,
+    lib: *std.Build.Step.Compile,
+) *std.Build.Step.Compile {
+    const base_path = "terp/git/";
+
+    const c_flags = switch (params.target.getOsTag()) {
+        .linux => [_][]const u8{
+            "-DUSE_DIRECT_THREADING",
+            "-DUSE_MMAP",
+            "-DUSE_INLINE",
+        },
+        else => @panic("TODO(someday): unsupported"),
+    };
+
+    const c_sources_os = switch (params.target.getOsTag()) {
+        .linux => [_][]const u8{base_path ++ "git_unix.c"},
+        else => @panic("TODO(someday): unsupported"),
+    };
+    const c_sources = c_sources_os ++ [_][]const u8{
+        base_path ++ "compiler.c",
+        base_path ++ "gestalt.c",
+        base_path ++ "git.c",
+        base_path ++ "glkop.c",
+        base_path ++ "heap.c",
+        base_path ++ "memory.c",
+        base_path ++ "opcodes.c",
+        base_path ++ "operands.c",
+        base_path ++ "peephole.c",
+        base_path ++ "savefile.c",
+        base_path ++ "saveundo.c",
+        base_path ++ "search.c",
+        base_path ++ "terp.c",
+        base_path ++ "accel.c",
+    };
+
+    const terp = b.addExecutable(.{
+        .name = "imglk-git",
+        .root_source_file = .{ .path = "terp/main.zig" },
+        .target = params.target,
+        .optimize = params.optimize,
+    });
+    terp.addIncludePath(.{ .path = "src/c" });
+    terp.addCSourceFiles(&c_sources, &c_flags);
+    terp.linkLibrary(lib);
+    b.installArtifact(terp);
+    return terp;
+}
+
 fn build_terp(
     b: *std.Build,
     params: BuildParams,
@@ -111,7 +164,7 @@ fn build_terp(
     source_files: []const []const u8,
 ) *std.Build.Step.Compile {
     const terp = b.addExecutable(.{
-        .name = name ++ "-imglk",
+        .name = "imglk-" ++ name,
         .root_source_file = .{ .path = "terp/main.zig" },
         .target = params.target,
         .optimize = params.optimize,

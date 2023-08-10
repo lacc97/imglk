@@ -4,3 +4,6 @@
 [submodule "lib/zgl"]
 	path = lib/zgl
 	url = https://github.com/ziglibs/zgl.git
+[submodule "terp/git"]
+	path = terp/git
+	url = https://github.com/DavidKinder/Git.git
