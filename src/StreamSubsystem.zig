@@ -1,4 +1,5 @@
 const std = @import("std");
+const assert = std.debug.assert;
 const core = @import("core.zig");
 
 const ObjectPool = @import("object_pool.zig").ObjectPool;
@@ -27,6 +28,7 @@ pub const Error = error{
     EOF,
     NotAvailable,
     InvalidArgument,
+    GLKRecursiveEcho,
 } || WindowData.Error;
 
 pub const Stream = struct {
@@ -149,7 +151,7 @@ pub const Stream = struct {
         if (!self.flags.write) return Error.NotAvailable;
 
         if (!self.flags.unicode) {
-            return self.putCharsRaw(buf);
+            try self.putCharsRaw(buf);
         } else {
             var buf_uni: [static_buffer_size_uni]u32 = undefined;
 
@@ -163,6 +165,13 @@ pub const Stream = struct {
                     buf_uni[j] = buf[i];
                 }
                 try self.putUniCharsRaw(buf_uni[0..j]);
+            }
+        }
+
+        if (self.data == .window) {
+            if (self.data.window.echo) |e| {
+                if (e == self) return Error.GLKRecursiveEcho;
+                _ = e.putChars(buf) catch {};
             }
         }
     }
@@ -254,6 +263,13 @@ pub const Stream = struct {
                     buf[j] = if (buf_uni[i] <= 0xff) @truncate(buf_uni[j]) else '?';
                 }
                 try self.putCharsRaw(buf[0..j]);
+            }
+        }
+
+        if (self.data == .window) {
+            if (self.data.window.echo) |e| {
+                if (e == self) return Error.GLKRecursiveEcho;
+                _ = e.putUniChars(buf_uni) catch {};
             }
         }
     }

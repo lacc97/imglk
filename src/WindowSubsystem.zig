@@ -159,6 +159,7 @@ pub const WindowData = struct {
     allocator: std.mem.Allocator,
     vtable: VTable,
     parent: ?*WindowData,
+    echo: ?*Stream = null,
     cached_ui_size: imgui.Vec2,
     cached_glk_size: GlkSize,
     w: union(WindowKind) {
@@ -1126,17 +1127,15 @@ pub export fn glk_window_set_echo_stream(
     win: winid_t,
     str: strid_t,
 ) void {
-    _ = str;
-
     const w = win.?;
-    _ = w;
+    w.data.echo = str;
 }
 
 export fn glk_window_get_echo_stream(
     win: winid_t,
 ) strid_t {
-    _ = win;
-    return null;
+    const w = win.?;
+    return w.data.echo;
 }
 
 pub export fn glk_window_clear(
