@@ -126,6 +126,7 @@ pub const WindowMethod = packed struct {
         border = core.c_glk.winmethod_Border >> 8,
         no_border = core.c_glk.winmethod_NoBorder >> 8,
     },
+    _: u23 = 0,
 
     pub fn from(c: u32) WindowMethod {
         return .{
@@ -772,12 +773,23 @@ pub const Window = struct {
 
     // --- Public functions ---
 
+    pub fn fromDataPtr(data: *WindowData) *Window {
+        return @fieldParentPtr(Window, "data", data);
+    }
+
     pub fn deinit(
         self: *@This(),
         result: ?*stream_result_t,
     ) void {
         stream_sys.closeWindowStream(self.str, result);
         self.data.deinit();
+    }
+
+    pub fn getParent(
+        self: *@This(),
+    ) ?*Window {
+        const parent_data = self.data.parent orelse return null;
+        return Window.fromDataPtr(parent_data);
     }
 
     pub fn format(
@@ -944,13 +956,8 @@ fn drawUi() !void {
 
 comptime {
     if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) {
-        @export(getRootWindow, .{ .name = "imglk_getRootWindow", .linkage = .Strong });
         @export(dumpWindowTree, .{ .name = "imglk_dumpWindowTree", .linkage = .Strong });
     }
-}
-
-fn getRootWindow() callconv(.C) ?*Window {
-    return root;
 }
 
 fn dumpWindowTree(root_win: *Window) callconv(.C) void {
@@ -967,8 +974,8 @@ fn dumpWindowTree(root_win: *Window) callconv(.C) void {
                 const first_data = win.data.w.pair.first;
                 const second_data = win.data.w.pair.second;
                 break :blk .{
-                    @fieldParentPtr(Window, "data", first_data),
-                    @fieldParentPtr(Window, "data", second_data),
+                    Window.fromDataPtr(first_data),
+                    Window.fromDataPtr(second_data),
                 };
             };
 
@@ -1013,8 +1020,6 @@ const stream_result_t = core.c_glk.stream_result_t;
 pub export fn glk_window_get_rock(
     win: winid_t,
 ) callconv(.C) u32 {
-    std.debug.assert(win != null);
-
     return win.?.rock;
 }
 
@@ -1023,6 +1028,10 @@ pub export fn glk_window_iterate(
     rockptr: ?*u32,
 ) callconv(.C) winid_t {
     return getNextWindow(win, rockptr);
+}
+
+export fn glk_window_get_root() winid_t {
+    return root;
 }
 
 pub export fn glk_set_window(
@@ -1058,24 +1067,57 @@ pub export fn glk_window_close(
     closeWindow(win.?, result);
 }
 
+export fn glk_window_get_parent(
+    win: winid_t,
+) winid_t {
+    const w = win.?;
+    return w.getParent();
+}
+
+export fn glk_window_get_sibling(
+    win: winid_t,
+) winid_t {
+    const w = win.?;
+    const parent = glk_window_get_parent(win) orelse return null;
+    assert(parent.data.w == .pair);
+    assert(parent.data.w.pair.first == &w.data or parent.data.w.pair.second == &w.data);
+    if (parent.data.w.pair.first == &w.data) {
+        return Window.fromDataPtr(parent.data.w.pair.second);
+    } else {
+        return Window.fromDataPtr(parent.data.w.pair.first);
+    }
+}
+
+export fn glk_window_get_type(
+    win: winid_t,
+) u32 {
+    const w = win.?;
+    return @intFromEnum(w.data.w);
+}
+
 pub export fn glk_window_get_size(
     win: winid_t,
     widthptr: ?*u32,
     heightptr: ?*u32,
 ) void {
-    assert(win != null);
-
     const w = win.?;
     const size = w.data.cached_glk_size;
     if (widthptr) |wp| wp.* = size.w;
     if (heightptr) |hp| hp.* = size.h;
 }
 
+export fn glk_window_get_arrangement(win: winid_t, methodptr: ?*u32, sizeptr: ?*u32, keywinptr: ?*winid_t) void {
+    const w = win.?;
+    const p = &w.data.w.pair;
+
+    if (methodptr) |m| m.* = @bitCast(p.method);
+    if (sizeptr) |s| s.* = p.size;
+    if (keywinptr) |k| k.* = if (p.key) |pk| Window.fromDataPtr(pk) else null;
+}
+
 pub export fn glk_window_get_stream(
     win: winid_t,
 ) strid_t {
-    assert(win != null);
-
     const w = win.?;
     return w.str;
 }
@@ -1085,17 +1127,21 @@ pub export fn glk_window_set_echo_stream(
     str: strid_t,
 ) void {
     _ = str;
-    assert(win != null);
 
     const w = win.?;
     _ = w;
 }
 
+export fn glk_window_get_echo_stream(
+    win: winid_t,
+) strid_t {
+    _ = win;
+    return null;
+}
+
 pub export fn glk_window_clear(
     win: winid_t,
 ) void {
-    assert(win != null);
-
     const w = win.?;
     w.data.clear() catch |err| {
         glk_log.warn("failed to clear: {}", .{err});
@@ -1107,8 +1153,6 @@ pub export fn glk_window_move_cursor(
     xpos: u32,
     ypos: u32,
 ) void {
-    assert(win != null);
-
     const w = win.?;
     w.data.moveCursor(xpos, ypos) catch {};
 }
@@ -1137,7 +1181,8 @@ pub export fn glk_request_line_event(
     buflen: u32,
     initlen: u32,
 ) void {
-    assert(win != null);
+    _ = win;
+
     assert(buf != null);
     assert(buflen > 0);
     assert(initlen <= buflen);
@@ -1151,7 +1196,8 @@ pub export fn glk_request_line_event_uni(
     buflen: u32,
     initlen: u32,
 ) void {
-    assert(win != null);
+    _ = win;
+
     assert(buf_uni != null);
     assert(buflen > 0);
     assert(initlen <= buflen);
