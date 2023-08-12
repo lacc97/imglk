@@ -22,6 +22,8 @@ const glk_log = std.log.scoped(.glk);
 var main_window: glfw.Window = undefined;
 var main_ui: imgui.Context = undefined;
 
+var show_debug_window: bool = false;
+
 var pool: ObjectPool(Window) = undefined;
 
 var root: winid_t = null;
@@ -60,6 +62,8 @@ pub fn initSubsystem(alloc: std.mem.Allocator) !void {
         return Error.GLFW;
     };
     errdefer main_window.destroy();
+
+    main_window.setKeyCallback(keyCallback);
 
     glfw.makeContextCurrent(main_window);
     try gl.loadExtensions({}, getProcAddress);
@@ -1007,6 +1011,24 @@ fn errorCallback(error_code: glfw.ErrorCode, description: [:0]const u8) void {
     glk_log.warn("glfw error ({}): {s}\n", .{ error_code, description });
 }
 
+/// Key callback for main window.
+fn keyCallback(
+    window: glfw.Window,
+    key: glfw.Key,
+    scancode: i32,
+    action: glfw.Action,
+    mods: glfw.Mods,
+) void {
+    switch (action) {
+        .release => {
+            if (key == .grave_accent and mods.control) show_debug_window = !show_debug_window;
+        },
+        else => {},
+    }
+    _ = scancode;
+    _ = window;
+}
+
 /// GL function loader
 fn getProcAddress(_: void, proc_name: [:0]const u8) ?*const anyopaque {
     return @as(?*const anyopaque, @ptrCast(glfw.getProcAddress(proc_name.ptr)));
@@ -1241,9 +1263,13 @@ pub export fn glk_select(
     imgui.glfw.newFrame();
     imgui.newFrame();
 
-    drawUi() catch {
-        glk_log.err("error drawing ui", .{});
-    };
+    if (!show_debug_window) {
+        drawUi() catch {
+            glk_log.err("error drawing ui", .{});
+        };
+    } else {
+        imgui.showDemoWindow(null);
+    }
     imgui.render();
 
     const io = main_ui.getIO();
