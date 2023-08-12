@@ -14,6 +14,7 @@ const gl_log = std.log.scoped(.gl);
 
 comptime {
     std.testing.refAllDecls(@import("latin1.zig"));
+    std.testing.refAllDecls(@import("datetime.zig"));
 }
 
 fn runGlk() !void {

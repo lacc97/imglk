@@ -1,10 +1,6 @@
 const std = @import("std");
 
-pub const c_glk = @cImport({
-    @cInclude("glk.h");
-    @cInclude("gi_blorb.h");
-    @cInclude("gi_dispa.h");
-});
+pub const c_glk = @import("c.zig");
 
 // --- Globals ---
 
@@ -83,6 +79,7 @@ fn gestalt(sel: GestaltSelector, val: u32, arr: []u32) u32 {
             if (val < 0x100 and std.ascii.isPrint(@truncate(val))) return 1;
             return 0;
         },
+        .date_time => return 1,
 
         else => return 0,
     }
