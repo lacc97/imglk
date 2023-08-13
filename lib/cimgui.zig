@@ -18,7 +18,11 @@ pub const Error = error{
     WrongGLSLVersion,
 };
 
+pub const ID = c.ImGuiID;
+
 pub const Vec2 = c.ImVec2;
+
+pub const Rect = c.ImRect;
 
 pub const WindowFlags = packed struct(u32) {
     no_title_bar: bool = false,
@@ -132,6 +136,30 @@ pub const Font = struct {
     }
 };
 
+pub const Window = struct {
+    // --- Fields ---
+
+    ptr: *c.ImGuiWindow,
+
+    // --- Public functions ---
+
+    pub fn getIDFromName(self: Window, name: []const u8) ID {
+        return c.ImGuiWindow_GetID_Str(
+            self.ptr,
+            name.ptr,
+            name.ptr + name.len,
+        );
+    }
+
+    pub fn rect(
+        self: Window,
+    ) Rect {
+        var r: Rect = undefined;
+        c.ImGuiWindow_Rect(&r, self.ptr);
+        return r;
+    }
+};
+
 // --- Namespaces ---
 
 pub const glfw = struct {
@@ -234,6 +262,10 @@ pub inline fn getFont() Font {
     return .{ .ptr = c.igGetFont() };
 }
 
+pub inline fn getCurrentWindow() ?Window {
+    return .{ .ptr = c.igGetCurrentWindow() orelse return null };
+}
+
 pub inline fn newFrame() void {
     c.igNewFrame();
 }
@@ -259,6 +291,14 @@ pub inline fn getContentRegionAvail() Vec2 {
 
 pub inline fn sameLine(offset: f32, spacing: f32) void {
     c.igSameLine(offset, spacing);
+}
+
+pub inline fn isWindowHovered(bb: Rect, id: ID) bool {
+    return c.igIsWindowHovered(bb, id);
+}
+
+pub inline fn setHoveredID(id: ID) void {
+    c.igSetHoveredID(id);
 }
 
 // -- Drawing functions

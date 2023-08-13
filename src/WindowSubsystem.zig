@@ -166,6 +166,14 @@ pub const WindowData = struct {
     echo: ?*Stream = null,
     cached_ui_size: imgui.Vec2,
     cached_glk_size: GlkSize,
+    keyboard_input_request: union(enum) {
+        none,
+        char,
+        char_uni,
+        line: []u8,
+        line_uni: []u32,
+    } = .{ .none = {} },
+    mouse_input_request: bool = false,
     w: union(WindowKind) {
         blank: void,
         graphics: void,
@@ -196,7 +204,7 @@ pub const WindowData = struct {
 
     // --- Public types ---
 
-    pub const Error = std.mem.Allocator.Error;
+    pub const Error = std.mem.Allocator.Error || error{ImGuiError};
 
     pub const GlkSize = struct { w: u32, h: u32 };
 
@@ -319,7 +327,7 @@ pub const WindowData = struct {
             .{},
         );
         defer imgui.endChild();
-        return try self.vtable.draw(self);
+        return try self.vtable.draw(self, name);
     }
 
     // --- Private types ---
@@ -330,7 +338,7 @@ pub const WindowData = struct {
         put_text: *const fn (self: *WindowData, codepoints: []const u32) WindowData.Error!void = noopPutText,
         move_cursor: *const fn (self: *WindowData, x: u32, y: u32) WindowData.Error!void = noopMoveCursor,
 
-        draw: *const fn (self: *WindowData) WindowData.Error!void = noopDraw,
+        draw: *const fn (self: *WindowData, name: []const u8) WindowData.Error!void = noopDraw,
     };
 
     const PairWindow = struct {
@@ -440,7 +448,9 @@ pub const WindowData = struct {
 
     fn noopDraw(
         self: *@This(),
+        name: []const u8,
     ) WindowData.Error!void {
+        _ = name;
         self.cached_ui_size = uiClampPositive(imgui.getContentRegionAvail());
         self.cached_glk_size = .{ .w = 0, .h = 0 };
     }
@@ -503,6 +513,7 @@ pub const WindowData = struct {
 
     fn tgDraw(
         self: *@This(),
+        name: []const u8,
     ) WindowData.Error!void {
         assert(self.w == .text_grid);
 
@@ -561,6 +572,22 @@ pub const WindowData = struct {
             txt[i] = '\n';
             i += 1;
         }
+
+        // -- GUI
+
+        const g = imgui.getCurrentContext() orelse return WindowData.Error.ImGuiError;
+        _ = g;
+        const window = imgui.getCurrentWindow() orelse return WindowData.Error.ImGuiError;
+        const id = window.getIDFromName(name);
+        const bb = window.rect();
+
+        // const focus_requested = ;
+
+        const hovered = imgui.isWindowHovered(bb, id);
+        if (hovered) {
+            imgui.setHoveredID(id);
+        }
+
         imgui.text(txt[0..i]);
     }
 
@@ -604,7 +631,9 @@ pub const WindowData = struct {
 
     fn tbDraw(
         self: *@This(),
+        name: []const u8,
     ) WindowData.Error!void {
+        _ = name;
         assert(self.w == .text_buffer);
 
         self.cached_ui_size = uiClampPositive(imgui.getContentRegionAvail());
@@ -618,7 +647,9 @@ pub const WindowData = struct {
 
     fn pDraw(
         self: *@This(),
+        name: []const u8,
     ) WindowData.Error!void {
+        _ = name;
         assert(self.w == .pair);
 
         self.cached_ui_size = uiClampPositive(imgui.getContentRegionAvail());
@@ -1181,19 +1212,50 @@ pub export fn glk_window_move_cursor(
 pub export fn glk_request_char_event(
     win: winid_t,
 ) void {
-    _ = win;
+    const w = win.?;
+    if (w.data.keyboard_input_request != .none) {
+        glk_log.warn(
+            "attempted to request char input whilst {s} input is pending",
+            .{@tagName(w.data.keyboard_input_request)},
+        );
+        return;
+    }
+
+    w.data.keyboard_input_request = .{ .char = {} };
 }
 
 pub export fn glk_request_char_event_uni(
     win: winid_t,
 ) void {
-    _ = win;
+    const w = win.?;
+    if (w.data.keyboard_input_request != .none) {
+        glk_log.warn(
+            "attempted to request char input whilst {s} input is pending",
+            .{@tagName(w.data.keyboard_input_request)},
+        );
+        return;
+    }
+
+    w.data.keyboard_input_request = .{ .char_uni = {} };
 }
 
 pub export fn glk_cancel_char_event(
     win: winid_t,
 ) void {
-    _ = win;
+    const w = win.?;
+    switch (w.data.keyboard_input_request) {
+        .none => {
+            // Assume we have already fulfilled the input request, so we
+            // should look for it in the event queue to clear it out
+            // before we report it to the user.
+
+            // TODO: implement
+        },
+        .char, .char_uni => {
+            w.data.keyboard_input_request = .{ .none = {} };
+        },
+        else => glk_log.warn("attempted to cancel char input whilst {} input is pending", .{@tagName(w.data.keyboard_input_request)}),
+    }
 }
 
 pub export fn glk_request_line_event(
@@ -1232,6 +1294,16 @@ pub export fn glk_cancel_line_event(
 ) void {
     _ = event;
     _ = win;
+}
+
+export fn glk_request_mouse_event(win: winid_t) void {
+    const w = win.?;
+    w.data.mouse_input_request = true;
+}
+
+export fn glk_cancel_mouse_event(win: winid_t) void {
+    const w = win.?;
+    w.data.mouse_input_request = false;
 }
 
 // TODO: this should go in a separate file
